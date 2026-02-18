@@ -22,7 +22,8 @@ var commentListCmd = &cobra.Command{
 
 Examples:
   notion comment list abc123
-  notion comment list abc123 --format json`,
+  notion comment list abc123 --format json
+  notion comment list abc123 --all`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := getToken()
@@ -31,25 +32,44 @@ Examples:
 		}
 
 		blockID := util.ResolveID(args[0])
+		all, _ := cmd.Flags().GetBool("all")
+		cursor, _ := cmd.Flags().GetString("cursor")
 		c := client.New(token)
 		c.SetDebug(debugMode)
 
-		result, err := c.ListComments(blockID, 100, "")
-		if err != nil {
-			return fmt.Errorf("list comments: %w", err)
+		var allResults []interface{}
+		currentCursor := cursor
+
+		for {
+			result, err := c.ListComments(blockID, 100, currentCursor)
+			if err != nil {
+				return fmt.Errorf("list comments: %w", err)
+			}
+
+			if outputFormat == "json" && !all {
+				return render.JSON(result)
+			}
+
+			results, _ := result["results"].([]interface{})
+			allResults = append(allResults, results...)
+
+			hasMore, _ := result["has_more"].(bool)
+			if !all || !hasMore {
+				if all && outputFormat == "json" {
+					return render.JSON(map[string]interface{}{"results": allResults})
+				}
+				break
+			}
+			nextCursor, _ := result["next_cursor"].(string)
+			currentCursor = nextCursor
 		}
 
-		if outputFormat == "json" {
-			return render.JSON(result)
-		}
-
-		results, _ := result["results"].([]interface{})
-		if len(results) == 0 {
+		if len(allResults) == 0 {
 			fmt.Println("No comments found.")
 			return nil
 		}
 
-		for _, r := range results {
+		for _, r := range allResults {
 			comment, ok := r.(map[string]interface{})
 			if !ok {
 				continue
@@ -60,7 +80,6 @@ Examples:
 				createdTime = createdTime[:10]
 			}
 
-			// Extract text from rich_text
 			var text string
 			if richText, ok := comment["rich_text"].([]interface{}); ok {
 				for _, t := range richText {
@@ -123,6 +142,9 @@ Examples:
 }
 
 func init() {
+	commentListCmd.Flags().String("cursor", "", "Pagination cursor")
+	commentListCmd.Flags().Bool("all", false, "Fetch all pages of results")
+
 	commentCmd.AddCommand(commentListCmd)
 	commentCmd.AddCommand(commentAddCmd)
 }

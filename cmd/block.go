@@ -217,15 +217,26 @@ Examples:
 		// Map friendly type names to Notion block types
 		notionType := mapBlockType(blockType)
 
+		blockContent := map[string]interface{}{
+			"rich_text": []map[string]interface{}{
+				{"text": map[string]interface{}{"content": text}},
+			},
+		}
+
+		// Code blocks require a language field
+		if notionType == "code" {
+			lang, _ := cmd.Flags().GetString("lang")
+			if lang == "" {
+				lang = "plain text"
+			}
+			blockContent["language"] = lang
+		}
+
 		children := []map[string]interface{}{
 			{
-				"object": "block",
-				"type":   notionType,
-				notionType: map[string]interface{}{
-					"rich_text": []map[string]interface{}{
-						{"text": map[string]interface{}{"content": text}},
-					},
-				},
+				"object":   "block",
+				"type":     notionType,
+				notionType: blockContent,
 			},
 		}
 
@@ -275,6 +286,9 @@ var blockDeleteCmd = &cobra.Command{
 
 func init() {
 	blockAppendCmd.Flags().StringP("type", "t", "paragraph", "Block type: paragraph, heading1, heading2, heading3, todo, bullet, numbered, quote, code, callout, divider")
+	blockAppendCmd.Flags().String("lang", "plain text", "Language for code blocks (e.g. go, python, bash)")
+	blockListCmd.Flags().String("cursor", "", "Pagination cursor")
+	blockListCmd.Flags().Bool("all", false, "Fetch all pages of results")
 	blockUpdateCmd.Flags().String("text", "", "New text content (required)")
 	blockUpdateCmd.Flags().StringP("type", "t", "", "Block type (auto-detected if not specified)")
 
