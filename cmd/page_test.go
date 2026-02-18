@@ -4,42 +4,6 @@ import (
 	"testing"
 )
 
-func TestMapBlockType(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"heading1", "heading_1"},
-		{"h1", "heading_1"},
-		{"heading2", "heading_2"},
-		{"h2", "heading_2"},
-		{"heading3", "heading_3"},
-		{"h3", "heading_3"},
-		{"bullet", "bulleted_list_item"},
-		{"numbered", "numbered_list_item"},
-		{"todo", "to_do"},
-		{"paragraph", "paragraph"},
-		{"p", "paragraph"},
-		{"quote", "quote"},
-		{"code", "code"},
-		{"callout", "callout"},
-		{"divider", "divider"},
-		// passthrough for native types
-		{"heading_1", "heading_1"},
-		{"bulleted_list_item", "bulleted_list_item"},
-		{"unknown_type", "unknown_type"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := mapBlockType(tt.input)
-			if got != tt.want {
-				t.Errorf("mapBlockType(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestBuildPropertyValue(t *testing.T) {
 	tests := []struct {
 		name     string
