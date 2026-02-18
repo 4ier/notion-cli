@@ -205,7 +205,7 @@ func TestMakeTextBlock(t *testing.T) {
 	}
 }
 
-func TestMapBlockType(t *testing.T) {
+func TestMapBlockTypeAliases(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string
@@ -214,6 +214,8 @@ func TestMapBlockType(t *testing.T) {
 		{"h2", "heading_2"},
 		{"h3", "heading_3"},
 		{"heading1", "heading_1"},
+		{"heading2", "heading_2"},
+		{"heading3", "heading_3"},
 		{"bullet", "bulleted_list_item"},
 		{"numbered", "numbered_list_item"},
 		{"todo", "to_do"},
@@ -223,7 +225,10 @@ func TestMapBlockType(t *testing.T) {
 		{"code", "code"},
 		{"callout", "callout"},
 		{"divider", "divider"},
-		{"unknown_type", "unknown_type"}, // passthrough
+		// passthrough for native Notion types
+		{"heading_1", "heading_1"},
+		{"bulleted_list_item", "bulleted_list_item"},
+		{"unknown_type", "unknown_type"},
 	}
 
 	for _, tt := range tests {
