@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/4ier/notion-cli/internal/client"
@@ -540,6 +541,113 @@ var dbOpenCmd = &cobra.Command{
 	},
 }
 
+var dbAddBulkCmd = &cobra.Command{
+	Use:   "add-bulk <db-id|url>",
+	Short: "Bulk add rows from a JSON file",
+	Long: `Add multiple rows to a database from a JSON file.
+
+File format: JSON array of objects with property key-value pairs.
+
+Examples:
+  notion db add-bulk abc123 --file items.json
+
+  # items.json:
+  # [
+  #   {"Name": "Task A", "Status": "Todo"},
+  #   {"Name": "Task B", "Status": "Done", "Priority": "High"}
+  # ]`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		dbID := util.ResolveID(args[0])
+		filePath, _ := cmd.Flags().GetString("file")
+
+		if filePath == "" {
+			return fmt.Errorf("--file is required")
+		}
+
+		// Read and parse JSON file
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return fmt.Errorf("read file: %w", err)
+		}
+
+		var items []map[string]string
+		if err := json.Unmarshal(data, &items); err != nil {
+			return fmt.Errorf("parse JSON: %w (expected array of {\"Key\": \"Value\"} objects)", err)
+		}
+
+		if len(items) == 0 {
+			return fmt.Errorf("no items in file")
+		}
+
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		// Get database schema once
+		db, err := c.GetDatabase(dbID)
+		if err != nil {
+			return fmt.Errorf("get database schema: %w", err)
+		}
+		dbProps, _ := db["properties"].(map[string]interface{})
+
+		created := 0
+		var errors []string
+
+		for i, item := range items {
+			properties := map[string]interface{}{}
+			for key, value := range item {
+				propDef, ok := dbProps[key].(map[string]interface{})
+				if !ok {
+					errors = append(errors, fmt.Sprintf("row %d: property %q not found", i+1, key))
+					continue
+				}
+				propType, _ := propDef["type"].(string)
+				properties[key] = buildPropertyValue(propType, value)
+			}
+
+			body := map[string]interface{}{
+				"parent": map[string]interface{}{
+					"database_id": dbID,
+				},
+				"properties": properties,
+			}
+
+			_, err := c.Post("/v1/pages", body)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("row %d: %v", i+1, err))
+				continue
+			}
+			created++
+
+			if outputFormat != "json" {
+				fmt.Printf("\r  %d/%d rows created", created, len(items))
+			}
+		}
+
+		if outputFormat == "json" {
+			return render.JSON(map[string]interface{}{
+				"created": created,
+				"total":   len(items),
+				"errors":  errors,
+			})
+		}
+
+		fmt.Println() // newline after progress
+		fmt.Printf("✓ %d/%d rows created\n", created, len(items))
+		if len(errors) > 0 {
+			for _, e := range errors {
+				fmt.Printf("  ✗ %s\n", e)
+			}
+		}
+		return nil
+	},
+}
+
 func init() {
 	dbListCmd.Flags().IntP("limit", "l", 10, "Maximum results")
 	dbListCmd.Flags().String("cursor", "", "Pagination cursor")
@@ -552,12 +660,14 @@ func init() {
 	dbQueryCmd.Flags().StringArrayP("sort", "s", nil, "Sort expression (e.g. 'Date:desc')")
 	dbQueryCmd.Flags().IntP("limit", "l", 0, "Maximum results")
 	dbQueryCmd.Flags().String("cursor", "", "Pagination cursor")
+	dbAddBulkCmd.Flags().String("file", "", "JSON file with rows to create (required)")
 
 	dbCmd.AddCommand(dbListCmd)
 	dbCmd.AddCommand(dbViewCmd)
 	dbCmd.AddCommand(dbCreateCmd)
 	dbCmd.AddCommand(dbUpdateCmd)
 	dbCmd.AddCommand(dbAddCmd)
+	dbCmd.AddCommand(dbAddBulkCmd)
 	dbCmd.AddCommand(dbQueryCmd)
 	dbCmd.AddCommand(dbOpenCmd)
 }

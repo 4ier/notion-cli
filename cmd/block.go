@@ -3,6 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/4ier/notion-cli/internal/client"
 	"github.com/4ier/notion-cli/internal/render"
@@ -182,13 +184,16 @@ Examples:
 
 var blockAppendCmd = &cobra.Command{
 	Use:   "append <parent-id|url> [text]",
-	Short: "Append a block to a page",
+	Short: "Append blocks to a page",
 	Long: `Append content to a Notion page or block.
+
+Supports plain text, block types, and markdown files.
 
 Examples:
   notion block append <page-id> "Hello world"
   notion block append <page-id> --type heading1 "Section Title"
-  echo "piped content" | notion block append <page-id>`,
+  notion block append <page-id> --type code --lang go "fmt.Println()"
+  notion block append <page-id> --file notes.md`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := getToken()
@@ -198,46 +203,70 @@ Examples:
 
 		parentID := util.ResolveID(args[0])
 		blockType, _ := cmd.Flags().GetString("type")
+		filePath, _ := cmd.Flags().GetString("file")
+
 		if blockType == "" {
 			blockType = "paragraph"
-		}
-
-		text := ""
-		if len(args) > 1 {
-			text = args[1]
-		}
-
-		if text == "" {
-			return fmt.Errorf("text content is required")
 		}
 
 		c := client.New(token)
 		c.SetDebug(debugMode)
 
-		// Map friendly type names to Notion block types
-		notionType := mapBlockType(blockType)
+		var children []map[string]interface{}
 
-		blockContent := map[string]interface{}{
-			"rich_text": []map[string]interface{}{
-				{"text": map[string]interface{}{"content": text}},
-			},
-		}
-
-		// Code blocks require a language field
-		if notionType == "code" {
-			lang, _ := cmd.Flags().GetString("lang")
-			if lang == "" {
-				lang = "plain text"
+		if filePath != "" {
+			// Read file and split into paragraph blocks
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				return fmt.Errorf("read file: %w", err)
 			}
-			blockContent["language"] = lang
-		}
+			paragraphs := strings.Split(strings.TrimSpace(string(data)), "\n\n")
+			for _, p := range paragraphs {
+				p = strings.TrimSpace(p)
+				if p == "" {
+					continue
+				}
+				children = append(children, map[string]interface{}{
+					"object": "block",
+					"type":   "paragraph",
+					"paragraph": map[string]interface{}{
+						"rich_text": []map[string]interface{}{
+							{"text": map[string]interface{}{"content": p}},
+						},
+					},
+				})
+			}
+		} else {
+			text := ""
+			if len(args) > 1 {
+				text = args[1]
+			}
+			if text == "" {
+				return fmt.Errorf("text content or --file is required")
+			}
 
-		children := []map[string]interface{}{
-			{
+			notionType := mapBlockType(blockType)
+			blockContent := map[string]interface{}{
+				"rich_text": []map[string]interface{}{
+					{"text": map[string]interface{}{"content": text}},
+				},
+			}
+			if notionType == "code" {
+				lang, _ := cmd.Flags().GetString("lang")
+				if lang == "" {
+					lang = "plain text"
+				}
+				blockContent["language"] = lang
+			}
+			children = append(children, map[string]interface{}{
 				"object":   "block",
 				"type":     notionType,
 				notionType: blockContent,
-			},
+			})
+		}
+
+		if len(children) == 0 {
+			return fmt.Errorf("no content to append")
 		}
 
 		reqBody := map[string]interface{}{
@@ -255,38 +284,161 @@ Examples:
 			return render.JSON(result)
 		}
 
-		fmt.Println("✓ Block appended")
+		fmt.Printf("✓ %d block(s) appended\n", len(children))
 		return nil
 	},
 }
 
 var blockDeleteCmd = &cobra.Command{
-	Use:   "delete <block-id>",
-	Short: "Delete a block",
-	Args:  cobra.ExactArgs(1),
+	Use:   "delete <block-id ...>",
+	Short: "Delete one or more blocks",
+	Long: `Delete blocks by ID. Supports multiple IDs.
+
+Examples:
+  notion block delete abc123
+  notion block delete abc123 def456 ghi789`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := getToken()
 		if err != nil {
 			return err
 		}
 
-		blockID := util.ResolveID(args[0])
 		c := client.New(token)
 		c.SetDebug(debugMode)
 
-		_, err = c.Delete("/v1/blocks/" + blockID)
-		if err != nil {
-			return fmt.Errorf("delete block: %w", err)
+		deleted := 0
+		for _, arg := range args {
+			blockID := util.ResolveID(arg)
+			_, err = c.Delete("/v1/blocks/" + blockID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "✗ Failed to delete %s: %v\n", blockID, err)
+				continue
+			}
+			deleted++
 		}
 
-		fmt.Println("✓ Block deleted")
+		if outputFormat != "json" {
+			fmt.Printf("✓ %d block(s) deleted\n", deleted)
+		}
+		return nil
+	},
+}
+
+var blockInsertCmd = &cobra.Command{
+	Use:   "insert <parent-id|url> [text]",
+	Short: "Insert a block after a specific block",
+	Long: `Insert content after a specific child block within a parent.
+
+Examples:
+  notion block insert <page-id> "New paragraph" --after <block-id>
+  notion block insert <page-id> "Section" --after <block-id> --type h2
+  notion block insert <page-id> --file notes.md --after <block-id>`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		parentID := util.ResolveID(args[0])
+		afterID, _ := cmd.Flags().GetString("after")
+		blockType, _ := cmd.Flags().GetString("type")
+		filePath, _ := cmd.Flags().GetString("file")
+
+		if afterID == "" {
+			return fmt.Errorf("--after <block-id> is required (use 'block append' to add to end)")
+		}
+		afterID = util.ResolveID(afterID)
+
+		if blockType == "" {
+			blockType = "paragraph"
+		}
+
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		var children []map[string]interface{}
+
+		if filePath != "" {
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				return fmt.Errorf("read file: %w", err)
+			}
+			paragraphs := strings.Split(strings.TrimSpace(string(data)), "\n\n")
+			for _, p := range paragraphs {
+				p = strings.TrimSpace(p)
+				if p == "" {
+					continue
+				}
+				children = append(children, map[string]interface{}{
+					"object": "block",
+					"type":   "paragraph",
+					"paragraph": map[string]interface{}{
+						"rich_text": []map[string]interface{}{
+							{"text": map[string]interface{}{"content": p}},
+						},
+					},
+				})
+			}
+		} else {
+			text := ""
+			if len(args) > 1 {
+				text = args[1]
+			}
+			if text == "" {
+				return fmt.Errorf("text content or --file is required")
+			}
+
+			notionType := mapBlockType(blockType)
+			blockContent := map[string]interface{}{
+				"rich_text": []map[string]interface{}{
+					{"text": map[string]interface{}{"content": text}},
+				},
+			}
+			if notionType == "code" {
+				lang, _ := cmd.Flags().GetString("lang")
+				if lang == "" {
+					lang = "plain text"
+				}
+				blockContent["language"] = lang
+			}
+			children = append(children, map[string]interface{}{
+				"object":   "block",
+				"type":     notionType,
+				notionType: blockContent,
+			})
+		}
+
+		reqBody := map[string]interface{}{
+			"children": children,
+			"after":    afterID,
+		}
+
+		data, err := c.Patch(fmt.Sprintf("/v1/blocks/%s/children", parentID), reqBody)
+		if err != nil {
+			return fmt.Errorf("insert block: %w", err)
+		}
+
+		if outputFormat == "json" {
+			var result map[string]interface{}
+			json.Unmarshal(data, &result)
+			return render.JSON(result)
+		}
+
+		fmt.Printf("✓ %d block(s) inserted\n", len(children))
 		return nil
 	},
 }
 
 func init() {
-	blockAppendCmd.Flags().StringP("type", "t", "paragraph", "Block type: paragraph, heading1, heading2, heading3, todo, bullet, numbered, quote, code, callout, divider")
+	blockAppendCmd.Flags().StringP("type", "t", "paragraph", "Block type: paragraph, h1, h2, h3, todo, bullet, numbered, quote, code, callout, divider")
 	blockAppendCmd.Flags().String("lang", "plain text", "Language for code blocks (e.g. go, python, bash)")
+	blockAppendCmd.Flags().String("file", "", "Read content from a file (each double-newline-separated section becomes a block)")
+	blockInsertCmd.Flags().String("after", "", "Block ID to insert after (required)")
+	blockInsertCmd.Flags().StringP("type", "t", "paragraph", "Block type")
+	blockInsertCmd.Flags().String("lang", "plain text", "Language for code blocks")
+	blockInsertCmd.Flags().String("file", "", "Read content from a file")
 	blockListCmd.Flags().String("cursor", "", "Pagination cursor")
 	blockListCmd.Flags().Bool("all", false, "Fetch all pages of results")
 	blockUpdateCmd.Flags().String("text", "", "New text content (required)")
@@ -295,6 +447,7 @@ func init() {
 	blockCmd.AddCommand(blockListCmd)
 	blockCmd.AddCommand(blockGetCmd)
 	blockCmd.AddCommand(blockAppendCmd)
+	blockCmd.AddCommand(blockInsertCmd)
 	blockCmd.AddCommand(blockUpdateCmd)
 	blockCmd.AddCommand(blockDeleteCmd)
 }

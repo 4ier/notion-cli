@@ -490,6 +490,198 @@ Examples:
 	},
 }
 
+var pageRestoreCmd = &cobra.Command{
+	Use:   "restore <page-id|url>",
+	Short: "Restore an archived page",
+	Long: `Unarchive a Notion page (reverse of delete).
+
+Examples:
+  notion page restore abc123`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		pageID := util.ResolveID(args[0])
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		body := map[string]interface{}{
+			"archived": false,
+		}
+
+		data, err := c.Patch("/v1/pages/"+pageID, body)
+		if err != nil {
+			return fmt.Errorf("restore page: %w", err)
+		}
+
+		if outputFormat == "json" {
+			var result map[string]interface{}
+			json.Unmarshal(data, &result)
+			return render.JSON(result)
+		}
+
+		fmt.Println("✓ Page restored")
+		return nil
+	},
+}
+
+var pageLinkCmd = &cobra.Command{
+	Use:   "link <page-id|url>",
+	Short: "Link a page via a relation property",
+	Long: `Add a relation link between two pages.
+
+Examples:
+  notion page link abc123 --prop "Project" --to def456`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		pageID := util.ResolveID(args[0])
+		propName, _ := cmd.Flags().GetString("prop")
+		toID, _ := cmd.Flags().GetString("to")
+
+		if propName == "" {
+			return fmt.Errorf("--prop is required")
+		}
+		if toID == "" {
+			return fmt.Errorf("--to is required")
+		}
+		toID = util.ResolveID(toID)
+
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		// Get current page to read existing relations
+		page, err := c.GetPage(pageID)
+		if err != nil {
+			return fmt.Errorf("get page: %w", err)
+		}
+
+		props, _ := page["properties"].(map[string]interface{})
+		propData, ok := props[propName].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("property %q not found", propName)
+		}
+
+		// Build new relation list (existing + new)
+		var relations []map[string]interface{}
+		if existing, ok := propData["relation"].([]interface{}); ok {
+			for _, r := range existing {
+				if m, ok := r.(map[string]interface{}); ok {
+					relations = append(relations, m)
+				}
+			}
+		}
+		relations = append(relations, map[string]interface{}{"id": toID})
+
+		body := map[string]interface{}{
+			"properties": map[string]interface{}{
+				propName: map[string]interface{}{
+					"relation": relations,
+				},
+			},
+		}
+
+		data, err := c.Patch("/v1/pages/"+pageID, body)
+		if err != nil {
+			return fmt.Errorf("link page: %w", err)
+		}
+
+		if outputFormat == "json" {
+			var result map[string]interface{}
+			json.Unmarshal(data, &result)
+			return render.JSON(result)
+		}
+
+		fmt.Println("✓ Relation added")
+		return nil
+	},
+}
+
+var pageUnlinkCmd = &cobra.Command{
+	Use:   "unlink <page-id|url>",
+	Short: "Remove a relation link from a page",
+	Long: `Remove a relation link between two pages.
+
+Examples:
+  notion page unlink abc123 --prop "Project" --from def456`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		pageID := util.ResolveID(args[0])
+		propName, _ := cmd.Flags().GetString("prop")
+		fromID, _ := cmd.Flags().GetString("from")
+
+		if propName == "" {
+			return fmt.Errorf("--prop is required")
+		}
+		if fromID == "" {
+			return fmt.Errorf("--from is required")
+		}
+		fromID = util.ResolveID(fromID)
+
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		// Get current page to read existing relations
+		page, err := c.GetPage(pageID)
+		if err != nil {
+			return fmt.Errorf("get page: %w", err)
+		}
+
+		props, _ := page["properties"].(map[string]interface{})
+		propData, ok := props[propName].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("property %q not found", propName)
+		}
+
+		// Build new relation list without the target
+		var relations []map[string]interface{}
+		if existing, ok := propData["relation"].([]interface{}); ok {
+			for _, r := range existing {
+				if m, ok := r.(map[string]interface{}); ok {
+					id, _ := m["id"].(string)
+					if id != fromID {
+						relations = append(relations, m)
+					}
+				}
+			}
+		}
+
+		body := map[string]interface{}{
+			"properties": map[string]interface{}{
+				propName: map[string]interface{}{
+					"relation": relations,
+				},
+			},
+		}
+
+		data, err := c.Patch("/v1/pages/"+pageID, body)
+		if err != nil {
+			return fmt.Errorf("unlink page: %w", err)
+		}
+
+		if outputFormat == "json" {
+			var result map[string]interface{}
+			json.Unmarshal(data, &result)
+			return render.JSON(result)
+		}
+
+		fmt.Println("✓ Relation removed")
+		return nil
+	},
+}
+
 func init() {
 	pageListCmd.Flags().IntP("limit", "l", 10, "Maximum results")
 	pageListCmd.Flags().String("cursor", "", "Pagination cursor")
@@ -497,15 +689,22 @@ func init() {
 	pageCreateCmd.Flags().String("title", "", "Page title (required)")
 	pageCreateCmd.Flags().String("body", "", "Page body text")
 	pageMoveCmd.Flags().String("to", "", "Target parent page/database ID or URL (required)")
+	pageLinkCmd.Flags().String("prop", "", "Relation property name (required)")
+	pageLinkCmd.Flags().String("to", "", "Target page ID or URL to link (required)")
+	pageUnlinkCmd.Flags().String("prop", "", "Relation property name (required)")
+	pageUnlinkCmd.Flags().String("from", "", "Target page ID or URL to unlink (required)")
 
 	pageCmd.AddCommand(pageViewCmd)
 	pageCmd.AddCommand(pageListCmd)
 	pageCmd.AddCommand(pageCreateCmd)
 	pageCmd.AddCommand(pageDeleteCmd)
+	pageCmd.AddCommand(pageRestoreCmd)
 	pageCmd.AddCommand(pageMoveCmd)
 	pageCmd.AddCommand(pageOpenCmd)
 	pageCmd.AddCommand(pageSetCmd)
 	pageCmd.AddCommand(pagePropsCmd)
+	pageCmd.AddCommand(pageLinkCmd)
+	pageCmd.AddCommand(pageUnlinkCmd)
 }
 
 // openBrowser opens a URL in the default browser.

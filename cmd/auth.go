@@ -113,9 +113,65 @@ var authLogoutCmd = &cobra.Command{
 	},
 }
 
+var authDoctorCmd = &cobra.Command{
+	Use:   "doctor",
+	Short: "Check authentication and API connectivity",
+	Long: `Run health checks on your Notion CLI setup.
+
+Validates:
+  - Config file exists and has a token
+  - Token is valid (API responds)
+  - Workspace is accessible
+  - Can list databases
+
+Examples:
+  notion auth doctor`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Println("Notion CLI Health Check")
+		fmt.Println()
+
+		// Check 1: Config file
+		cfg, err := config.Load()
+		if err != nil || cfg.Token == "" {
+			fmt.Println("  ✗ Config: no token found")
+			fmt.Println("    Run: notion auth login --with-token")
+			return nil
+		}
+		fmt.Println("  ✓ Config: token found")
+
+		// Check 2: Token validity
+		c := client.New(cfg.Token)
+		me, err := c.GetMe()
+		if err != nil {
+			fmt.Printf("  ✗ Auth: token is invalid (%v)\n", err)
+			return nil
+		}
+
+		name, _ := me["name"].(string)
+		botInfo, _ := me["bot"].(map[string]interface{})
+		workspace, _ := botInfo["workspace_name"].(string)
+		fmt.Printf("  ✓ Auth: %s\n", name)
+		fmt.Printf("  ✓ Workspace: %s\n", workspace)
+
+		// Check 3: Can search
+		result, err := c.Search("", "", 1, "")
+		if err != nil {
+			fmt.Printf("  ✗ API: search failed (%v)\n", err)
+			return nil
+		}
+		results, _ := result["results"].([]interface{})
+		fmt.Printf("  ✓ API: search works (%d+ items accessible)\n", len(results))
+
+		fmt.Println()
+		fmt.Println("All checks passed ✓")
+		return nil
+	},
+}
+
 func init() {
 	authLoginCmd.Flags().Bool("with-token", false, "Read token from standard input")
 	authCmd.AddCommand(authLoginCmd)
 	authCmd.AddCommand(authStatusCmd)
 	authCmd.AddCommand(authLogoutCmd)
+	authCmd.AddCommand(authDoctorCmd)
 }
