@@ -66,3 +66,29 @@ nfpms:
     formats:
       - deb
       - rpm
+
+dockers:
+  - image_templates:
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+    goarch: amd64
+
+  - image_templates:
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-arm64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "ghcr.io/4ier/notion-cli:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-amd64"
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/4ier/notion-cli:latest"
+    image_templates:
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-amd64"
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-arm64"
