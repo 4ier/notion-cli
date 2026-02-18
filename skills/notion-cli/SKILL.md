@@ -1,7 +1,7 @@
 ---
 name: notion-cli
 description: |
-  Work with Notion from the terminal using the `notion` CLI. Use when the user needs to read, create, update, query, or manage Notion pages, databases, blocks, comments, users, or files programmatically. Covers the entire Notion API with 38 commands. Triggers: Notion workspace automation, database queries, page creation, block manipulation, comment threads, file uploads, relation management, or any Notion API interaction from the command line.
+  Work with Notion from the terminal using the `notion` CLI. Use when the user needs to read, create, update, query, or manage Notion pages, databases, blocks, comments, users, or files programmatically. Covers the entire Notion API with 39 commands. Triggers: Notion workspace automation, database queries, page creation, block manipulation, comment threads, file uploads, relation management, or any Notion API interaction from the command line.
 ---
 
 # Notion CLI
@@ -11,7 +11,17 @@ description: |
 ## Install
 
 ```bash
+# Homebrew
+brew install 4ier/tap/notion-cli
+
+# Go
 go install github.com/4ier/notion-cli@latest
+
+# npm
+npm install -g notion-cli-go
+
+# Or download binary from GitHub Releases
+# https://github.com/4ier/notion-cli/releases
 ```
 
 ## Auth
@@ -36,6 +46,7 @@ notion search "query" --type database    # databases only
 notion page view <id|url>                # render page content
 notion page list                         # list workspace pages
 notion page create <parent> --title "X" --body "content"
+notion page create <db-id> --db "Name=Review" "Status=Todo"  # database row
 notion page delete <id>                  # archive page
 notion page restore <id>                 # unarchive page
 notion page move <id> --to <parent>
@@ -53,6 +64,8 @@ notion db list                           # list databases
 notion db view <id>                      # show schema
 notion db query <id>                     # query all rows
 notion db query <id> -F 'Status=Done' -s 'Date:desc'  # filter + sort
+notion db query <id> --filter-json '{"or":[...]}'     # complex JSON filter
+notion db query <id> --all               # fetch all pages
 notion db create <parent> --title "X" --props "Status:select,Date:date"
 notion db update <id> --title "New Name" --add-prop "Priority:select"
 notion db add <id> "Name=Task" "Status=Todo" "Priority=High"
@@ -82,6 +95,8 @@ Multiple `-F` flags combine with AND. Property types are auto-detected from sche
 ```bash
 notion block list <parent-id>            # list child blocks
 notion block list <parent-id> --all      # paginate through all
+notion block list <parent-id> --depth 3  # recursive nested blocks
+notion block list <parent-id> --md       # output as Markdown
 notion block get <id>                    # get single block
 notion block append <parent> "text"      # append paragraph
 notion block append <parent> "text" -t bullet          # bullet point
@@ -98,6 +113,7 @@ Block types: `paragraph`/`p`, `h1`, `h2`, `h3`, `bullet`, `numbered`, `todo`, `q
 ```bash
 notion comment list <page-id>
 notion comment add <page-id> "comment text"
+notion comment get <comment-id>
 ```
 
 ### Users

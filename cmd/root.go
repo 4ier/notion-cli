@@ -11,6 +11,8 @@ import (
 var (
 	outputFormat string
 	debugMode    bool
+	// Version is set by goreleaser ldflags
+	Version = "dev"
 )
 
 var rootCmd = &cobra.Command{
@@ -20,7 +22,7 @@ var rootCmd = &cobra.Command{
 
 Notion CLI lets you manage pages, databases, blocks, and more
 without leaving your terminal. Built for developers and AI agents.`,
-	Version:       "0.1.0",
+	Version:       Version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }

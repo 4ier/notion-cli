@@ -1,0 +1,97 @@
+version: 2
+
+project_name: notion-cli
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/4ier/notion-cli/cmd.Version={{.Version}}
+    binary: notion
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+brews:
+  - repository:
+      owner: 4ier
+      name: homebrew-tap
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    homepage: "https://github.com/4ier/notion-cli"
+    description: "Full-featured CLI for Notion. Like gh for GitHub, but for Notion."
+    license: "MIT"
+    install: |
+      bin.install "notion"
+    test: |
+      system "#{bin}/notion", "--version"
+
+scoops:
+  - repository:
+      owner: 4ier
+      name: scoop-bucket
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    homepage: "https://github.com/4ier/notion-cli"
+    description: "Full-featured CLI for Notion. Like gh for GitHub, but for Notion."
+    license: "MIT"
+
+dockers:
+  - image_templates:
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+    goarch: amd64
+  - image_templates:
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-arm64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "ghcr.io/4ier/notion-cli:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-amd64"
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/4ier/notion-cli:latest"
+    image_templates:
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-amd64"
+      - "ghcr.io/4ier/notion-cli:{{ .Version }}-arm64"
+
+nfpms:
+  - homepage: "https://github.com/4ier/notion-cli"
+    maintainer: "Fourier <yang.fourier@gmail.com>"
+    description: "Full-featured CLI for Notion. Like gh for GitHub, but for Notion."
+    license: "MIT"
+    formats:
+      - deb
+      - rpm

@@ -1,193 +1,185 @@
-# notion-cli
+<h1 align="center">
+  notion-cli
+</h1>
 
-Work seamlessly with Notion from the command line.
+<p align="center">
+  <b>Like <code>gh</code> for GitHub, but for Notion. 39 commands. One binary.</b>
+</p>
 
-`notion` is a CLI tool for the [Notion API](https://developers.notion.com/). It lets you manage pages, databases, blocks, comments, users, and files without leaving your terminal. Built for developers and AI agents.
+<p align="center">
+  <a href="https://github.com/4ier/notion-cli/releases"><img src="https://img.shields.io/github/v/release/4ier/notion-cli?style=flat-square" alt="Release"></a>
+  <a href="https://github.com/4ier/notion-cli/actions"><img src="https://img.shields.io/github/actions/workflow/status/4ier/notion-cli/test.yml?style=flat-square&label=tests" alt="Tests"></a>
+  <a href="https://github.com/4ier/notion-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/4ier/notion-cli?style=flat-square" alt="License"></a>
+  <a href="https://goreportcard.com/report/github.com/4ier/notion-cli"><img src="https://goreportcard.com/badge/github.com/4ier/notion-cli?style=flat-square" alt="Go Report Card"></a>
+</p>
+
+---
+
+A full-featured command-line interface for [Notion](https://notion.so). Manage pages, databases, blocks, comments, users, and files — all from your terminal. Built for developers and AI agents who need programmatic access without the browser.
 
 ## Install
 
-### From source (requires Go 1.21+)
+### Homebrew (macOS/Linux)
+```sh
+brew install 4ier/tap/notion-cli
+```
 
-```bash
+### Go
+```sh
 go install github.com/4ier/notion-cli@latest
 ```
 
-### Binary releases
-
-Download from the [Releases](https://github.com/4ier/notion-cli/releases) page.
-
-## Authentication
-
-Create an [internal integration](https://www.notion.so/my-integrations) and grab the token.
-
-```bash
-# Save your token
-notion auth login --token ntn_xxxxxxxxxxxxx
-
-# Or use an environment variable
-export NOTION_TOKEN=ntn_xxxxxxxxxxxxx
-
-# Verify
-notion auth status
+### npm
+```sh
+npm install -g notion-cli-go
 ```
+
+### Scoop (Windows)
+```powershell
+scoop bucket add 4ier https://github.com/4ier/scoop-bucket
+scoop install notion-cli
+```
+
+### Docker
+```sh
+docker run --rm -e NOTION_TOKEN ghcr.io/4ier/notion-cli search "meeting"
+```
+
+### Binary
+
+Download from [GitHub Releases](https://github.com/4ier/notion-cli/releases) — available for Linux, macOS, and Windows (amd64/arm64).
 
 ## Quick Start
 
-```bash
+```sh
+# Authenticate
+notion auth login --token ntn_xxxxx
+
 # Search your workspace
 notion search "meeting notes"
-
-# View a page
-notion page view <page-id>
-
-# List databases
-notion db list
 
 # Query a database with filters
 notion db query <db-id> --filter 'Status=Done' --sort 'Date:desc'
 
-# Add a row to a database
-notion db add <db-id> "Name=My Task" "Status=Todo" "Priority=High"
+# Create a page in a database
+notion page create <db-id> --db "Name=Weekly Review" "Status=Todo"
 
-# Append content to a page
-notion block append <page-id> "Hello from the CLI"
+# Read page content as Markdown
+notion block list <page-id> --depth 3 --md
+
+# Append blocks from a Markdown file
+notion block append <page-id> --file notes.md
+
+# Raw API escape hatch
+notion api GET /v1/users/me
 ```
 
 ## Commands
 
-### Pages
+| Group | Commands | Description |
+|-------|----------|-------------|
+| **auth** | `login` `logout` `status` `doctor` | Authentication & diagnostics |
+| **search** | `search` | Search pages and databases |
+| **page** | `view` `list` `create` `delete` `restore` `move` `open` `set` `props` `link` `unlink` | Full page lifecycle |
+| **db** | `list` `view` `query` `create` `update` `add` `add-bulk` `open` | Database CRUD + query |
+| **block** | `list` `get` `append` `insert` `update` `delete` | Content block operations |
+| **comment** | `list` `add` `get` | Discussion threads |
+| **user** | `me` `list` `get` | Workspace members |
+| **file** | `list` `upload` | File management |
+| **api** | `<METHOD> <path>` | Raw API escape hatch |
 
-```
-notion page view <id>           View a page's content
-notion page list                List pages in the workspace
-notion page create <parent-id>  Create a new page (--title, --body)
-notion page delete <id>         Archive a page
-notion page move <id> --to <id> Move a page to a new parent
-notion page open <id>           Open in browser
-notion page set <id> Key=Value  Set page properties
-notion page props <id>          Show page properties
-```
+**39 subcommands** covering 100% of the Notion API.
 
-### Databases
+## Features
 
-```
-notion db list                  List accessible databases
-notion db view <id>             Show database schema
-notion db query <id>            Query with --filter and --sort
-notion db create <parent-id>    Create a database (--title, --props)
-notion db update <id>           Update title or add properties
-notion db add <id> Key=Value    Add a row to a database
-notion db open <id>             Open in browser
+### Human-Friendly Filters
+No JSON needed for 90% of queries:
+```sh
+notion db query <id> --filter 'Status=Done' --filter 'Priority=High' --sort 'Date:desc'
 ```
 
-#### Filter Syntax
-
-Filters use `property operator value` syntax:
-
-| Operator | Meaning |
-|----------|---------|
-| `=`      | equals |
-| `!=`     | not equals |
-| `>`      | greater than |
-| `>=`     | greater than or equal |
-| `<`      | less than |
-| `<=`     | less than or equal |
-| `~=`     | contains |
-
-Multiple filters are combined with AND:
-
-```bash
-notion db query <id> --filter 'Status=Done' --filter 'Priority=High'
+For complex queries (OR, nesting), use the JSON escape hatch:
+```sh
+notion db query <id> --filter-json '{"or":[{"property":"Status","status":{"equals":"Done"}},{"property":"Status","status":{"equals":"Cancelled"}}]}'
 ```
 
-Property types are auto-detected from the database schema.
-
-#### Sort Syntax
-
-```bash
-notion db query <id> --sort 'Date:desc' --sort 'Name:asc'
+### Schema-Aware Properties
+Property types are auto-detected from the database schema:
+```sh
+notion page create <db-id> --db "Name=Sprint Review" "Date=2026-03-01" "Points=8" "Done=true"
 ```
 
-### Blocks
+### Smart Output
+- **Terminal**: Colored tables, formatted text
+- **Pipe/Script**: Clean JSON for `jq`, scripts, and AI agents
+```sh
+# Pretty table in terminal
+notion db query <id>
 
-```
-notion block list <parent-id>   List child blocks
-notion block get <id>           Get a specific block
-notion block append <id> "text" Append content (--type: paragraph, h1, h2, h3, bullet, numbered, todo, quote, code, callout, divider)
-notion block update <id>        Update block content (--text)
-notion block delete <id>        Delete a block
-```
-
-### Comments
-
-```
-notion comment list <page-id>   List comments on a page
-notion comment add <page-id> "text"  Add a comment
+# JSON when piped
+notion db query <id> | jq '.results[].properties.Name'
 ```
 
-### Users
+### Markdown I/O
+```sh
+# Read blocks as Markdown
+notion block list <page-id> --md --depth 3
 
+# Write Markdown to Notion
+notion block append <page-id> --file document.md
 ```
-notion user me                  Show current bot user
-notion user list                List workspace users
-notion user get <id>            Get user details
-```
+Supports headings, bullets, numbered lists, todos, quotes, code blocks, and dividers.
 
-### Files
-
-```
-notion file list                List file uploads
-notion file upload <path>       Upload a file
-```
-
-### Search
-
-```
-notion search "query"           Search pages and databases
-notion search "query" --type page     Filter by type
-notion search "query" --type database
+### Recursive Block Reading
+```sh
+notion block list <page-id> --depth 5 --all
 ```
 
-### Raw API Access
-
-For any endpoint not covered by a dedicated command:
-
-```bash
-notion api GET /v1/users/me
-notion api POST /v1/search '{"query":"test"}'
-notion api PATCH /v1/pages/<id> '{"archived":true}'
+### URL or ID — Your Choice
+```sh
+# Both work
+notion page view abc123def
+notion page view https://notion.so/My-Page-abc123def456
 ```
 
-## Global Flags
-
-| Flag | Description |
-|------|-------------|
-| `--format json` | Output as JSON (auto-detected when piped) |
-| `--format table` | Force table output |
-| `--debug` | Show HTTP request/response details |
-| `--version` | Show version |
-
-## Output
-
-- **Terminal**: Pretty-printed with colors and tables
-- **Piped/scripted**: JSON by default (auto-detected)
-- **Explicit**: `--format json` or `--format table`
+### Actionable Error Messages
+```
+object_not_found: Could not find page with ID abc123
+  → Check the ID is correct and the page/database is shared with your integration
+```
 
 ## For AI Agents
 
-`notion` is designed to work well with AI agents:
+This CLI is designed to be agent-friendly:
+- **JSON output** when piped — no parsing needed
+- **Schema-aware** — agents don't need to know property types
+- **URL resolution** — paste Notion URLs directly
+- **Single binary** — no runtime dependencies
+- **Exit codes** — 0 for success, non-zero for errors
 
-- All commands support `--format json` for structured output
-- Auto-detects non-TTY and outputs JSON
-- Full IDs in all output (no truncation)
-- Accepts both Notion page IDs and full URLs
-- `notion api` as an escape hatch for any Notion API endpoint
+Install as an agent skill:
+```sh
+npx skills add 4ier/notion-cli
+```
+
+## Configuration
+
+```sh
+# Token is stored in ~/.config/notion-cli/config.json (mode 0600)
+notion auth login --token ntn_xxxxx
+
+# Or use environment variable
+export NOTION_TOKEN=ntn_xxxxx
+
+# Check authentication
+notion auth status
+notion auth doctor
+```
+
+## Contributing
+
+Issues and PRs welcome at [github.com/4ier/notion-cli](https://github.com/4ier/notion-cli).
 
 ## License
 
-MIT
-
-## Links
-
-- [Notion API Documentation](https://developers.notion.com/)
-- [Create an Integration](https://www.notion.so/my-integrations)
+[MIT](LICENSE)
