@@ -165,15 +165,18 @@ Examples:
 }
 
 var pageCreateCmd = &cobra.Command{
-	Use:   "create <parent-id|url>",
+	Use:   "create <parent-id|url> [prop=value ...]",
 	Short: "Create a new page",
 	Long: `Create a new page under a parent page or database.
 
+When creating under a database, provide properties as key=value arguments.
+Property types are auto-detected from the database schema.
+
 Examples:
-  notion page create <parent-id> --title "My New Page"
-  notion page create <parent-id> --title "Meeting Notes" --body "Agenda items..."
-  echo "Content from stdin" | notion page create <parent-id> --title "Piped"`,
-	Args: cobra.ExactArgs(1),
+  notion page create <page-id> --title "My New Page"
+  notion page create <page-id> --title "Meeting Notes" --body "Agenda items..."
+  notion page create <db-id> --db "Name=Sprint Review" "Status=Todo" "Date=2026-03-01"`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := getToken()
 		if err != nil {
@@ -183,26 +186,74 @@ Examples:
 		parentID := util.ResolveID(args[0])
 		title, _ := cmd.Flags().GetString("title")
 		body, _ := cmd.Flags().GetString("body")
-
-		if title == "" {
-			return fmt.Errorf("--title is required")
-		}
+		isDB, _ := cmd.Flags().GetBool("db")
 
 		c := client.New(token)
 		c.SetDebug(debugMode)
 
-		// Build request
-		reqBody := map[string]interface{}{
-			"parent": map[string]interface{}{
-				"page_id": parentID,
-			},
-			"properties": map[string]interface{}{
-				"title": map[string]interface{}{
-					"title": []map[string]interface{}{
-						{"text": map[string]interface{}{"content": title}},
+		var reqBody map[string]interface{}
+
+		if isDB {
+			// Database parent: auto-detect property types from schema
+			db, err := c.GetDatabase(parentID)
+			if err != nil {
+				return fmt.Errorf("get database schema: %w", err)
+			}
+			dbProps, _ := db["properties"].(map[string]interface{})
+
+			properties := map[string]interface{}{}
+
+			// Parse key=value pairs from remaining args
+			for _, kv := range args[1:] {
+				parts := strings.SplitN(kv, "=", 2)
+				if len(parts) != 2 {
+					return fmt.Errorf("invalid property format %q, expected key=value", kv)
+				}
+				key, value := parts[0], parts[1]
+				propDef, ok := dbProps[key].(map[string]interface{})
+				if !ok {
+					return fmt.Errorf("property %q not found in database schema", key)
+				}
+				propType, _ := propDef["type"].(string)
+				properties[key] = buildPropertyValue(propType, value)
+			}
+
+			// If --title provided and there's a title property, set it
+			if title != "" {
+				for name, v := range dbProps {
+					if prop, ok := v.(map[string]interface{}); ok {
+						if pt, _ := prop["type"].(string); pt == "title" {
+							properties[name] = buildPropertyValue("title", title)
+							break
+						}
+					}
+				}
+			}
+
+			reqBody = map[string]interface{}{
+				"parent": map[string]interface{}{
+					"database_id": parentID,
+				},
+				"properties": properties,
+			}
+		} else {
+			// Page parent
+			if title == "" {
+				return fmt.Errorf("--title is required")
+			}
+
+			reqBody = map[string]interface{}{
+				"parent": map[string]interface{}{
+					"page_id": parentID,
+				},
+				"properties": map[string]interface{}{
+					"title": map[string]interface{}{
+						"title": []map[string]interface{}{
+							{"text": map[string]interface{}{"content": title}},
+						},
 					},
 				},
-			},
+			}
 		}
 
 		// Add body content if provided
@@ -241,7 +292,11 @@ Examples:
 		id, _ := result["id"].(string)
 		url, _ := result["url"].(string)
 
-		render.Title("✓", fmt.Sprintf("Created: %s", title))
+		displayTitle := title
+		if displayTitle == "" {
+			displayTitle = "New row"
+		}
+		render.Title("✓", fmt.Sprintf("Created: %s", displayTitle))
 		render.Field("ID", id)
 		if url != "" {
 			render.Field("URL", url)
@@ -686,8 +741,9 @@ func init() {
 	pageListCmd.Flags().IntP("limit", "l", 10, "Maximum results")
 	pageListCmd.Flags().String("cursor", "", "Pagination cursor")
 	pageListCmd.Flags().Bool("all", false, "Fetch all pages of results")
-	pageCreateCmd.Flags().String("title", "", "Page title (required)")
+	pageCreateCmd.Flags().String("title", "", "Page title (required for page parent)")
 	pageCreateCmd.Flags().String("body", "", "Page body text")
+	pageCreateCmd.Flags().Bool("db", false, "Create under a database (properties as key=value args)")
 	pageMoveCmd.Flags().String("to", "", "Target parent page/database ID or URL (required)")
 	pageLinkCmd.Flags().String("prop", "", "Relation property name (required)")
 	pageLinkCmd.Flags().String("to", "", "Target page ID or URL to link (required)")

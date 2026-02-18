@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -83,6 +84,10 @@ func (c *Client) do(method, path string, body interface{}) ([]byte, error) {
 			Message string `json:"message"`
 		}
 		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Message != "" {
+			hint := errorHint(apiErr.Code, apiErr.Message)
+			if hint != "" {
+				return nil, fmt.Errorf("%s: %s\n  → %s", apiErr.Code, apiErr.Message, hint)
+			}
 			return nil, fmt.Errorf("%s: %s", apiErr.Code, apiErr.Message)
 		}
 		return nil, fmt.Errorf("API error: %s", resp.Status)
@@ -320,4 +325,30 @@ func (c *Client) UploadFileContent(uploadID, fileName, contentType string, fileB
 	}
 
 	return nil
+}
+
+// errorHint provides actionable suggestions for common API errors.
+func errorHint(code, message string) string {
+	switch code {
+	case "object_not_found":
+		return "Check the ID is correct and the page/database is shared with your integration"
+	case "unauthorized":
+		return "Run 'notion auth login' to authenticate, or check your token"
+	case "restricted_resource":
+		return "Your integration doesn't have access. Share the page/database with your integration in Notion"
+	case "rate_limited":
+		return "Too many requests. Wait a moment and try again"
+	case "validation_error":
+		if strings.Contains(message, "is not a property") {
+			return "Check property names with 'notion db view <id>' or 'notion page props <id>'"
+		}
+		if strings.Contains(message, "body failed validation") {
+			return "Check your input format. Use --debug for request details"
+		}
+	case "conflict_error":
+		return "The resource was modified by another process. Retry the operation"
+	case "internal_server_error", "service_unavailable":
+		return "Notion's servers are having issues. Try again in a few minutes"
+	}
+	return ""
 }

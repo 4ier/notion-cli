@@ -381,17 +381,19 @@ var dbQueryCmd = &cobra.Command{
 	Short: "Query a database with filters and sorts",
 	Long: `Query a database with optional filters and sorting.
 
-Filter syntax: property operator value
+Simple filter syntax: property operator value
 Operators: = != > >= < <= ~= (contains)
 
-Sort syntax: property:direction (asc or desc)
+For complex filters (OR, nesting), use --filter-json with raw Notion API JSON.
 
 Examples:
   notion db query abc123
   notion db query abc123 --filter 'Status=Done'
   notion db query abc123 --filter 'Date>=2026-01-01' --sort 'Date:desc'
   notion db query abc123 --filter 'Status=Done' --filter 'Priority=High'
-  notion db query abc123 --limit 5`,
+  notion db query abc123 --filter-json '{"or":[{"property":"Status","status":{"equals":"Done"}},{"property":"Status","status":{"equals":"Cancelled"}}]}'
+  notion db query abc123 --limit 5
+  notion db query abc123 --all`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := getToken()
@@ -401,8 +403,11 @@ Examples:
 
 		dbID := util.ResolveID(args[0])
 		filters, _ := cmd.Flags().GetStringArray("filter")
+		filterJSON, _ := cmd.Flags().GetString("filter-json")
 		sorts, _ := cmd.Flags().GetStringArray("sort")
 		limit, _ := cmd.Flags().GetInt("limit")
+		all, _ := cmd.Flags().GetBool("all")
+		cursor, _ := cmd.Flags().GetString("cursor")
 
 		c := client.New(token)
 		c.SetDebug(debugMode)
@@ -416,8 +421,14 @@ Examples:
 
 		body := map[string]interface{}{}
 
-		// Parse filters
-		if len(filters) > 0 {
+		// Raw JSON filter takes precedence
+		if filterJSON != "" {
+			var rawFilter interface{}
+			if err := json.Unmarshal([]byte(filterJSON), &rawFilter); err != nil {
+				return fmt.Errorf("invalid --filter-json: %w", err)
+			}
+			body["filter"] = rawFilter
+		} else if len(filters) > 0 {
 			filterConditions := []interface{}{}
 			for _, f := range filters {
 				condition, err := parseFilter(f, dbProps)
@@ -450,18 +461,38 @@ Examples:
 			body["page_size"] = limit
 		}
 
-		result, err := c.QueryDatabase(dbID, body)
-		if err != nil {
-			return fmt.Errorf("query database: %w", err)
+		var allResults []interface{}
+		currentCursor := cursor
+
+		for {
+			if currentCursor != "" {
+				body["start_cursor"] = currentCursor
+			}
+
+			result, err := c.QueryDatabase(dbID, body)
+			if err != nil {
+				return fmt.Errorf("query database: %w", err)
+			}
+
+			results, _ := result["results"].([]interface{})
+			allResults = append(allResults, results...)
+
+			hasMore, _ := result["has_more"].(bool)
+			if !all || !hasMore {
+				if !all && outputFormat == "json" {
+					return render.JSON(result)
+				}
+				break
+			}
+			nextCursor, _ := result["next_cursor"].(string)
+			currentCursor = nextCursor
 		}
 
 		if outputFormat == "json" {
-			return render.JSON(result)
+			return render.JSON(map[string]interface{}{"results": allResults, "count": len(allResults)})
 		}
 
-		// Build table from results
-		results, _ := result["results"].([]interface{})
-		if len(results) == 0 {
+		if len(allResults) == 0 {
 			fmt.Println("No results found.")
 			return nil
 		}
@@ -495,7 +526,7 @@ Examples:
 		}
 
 		var rows [][]string
-		for _, r := range results {
+		for _, r := range allResults {
 			page, ok := r.(map[string]interface{})
 			if !ok {
 				continue
@@ -512,14 +543,7 @@ Examples:
 		}
 
 		render.Table(headers, rows)
-
-		// Show pagination info
-		hasMore, _ := result["has_more"].(bool)
-		if hasMore {
-			nextCursor, _ := result["next_cursor"].(string)
-			render.Subtitle(fmt.Sprintf("\nMore results available. Use --cursor %s", nextCursor))
-		}
-
+		fmt.Printf("\n%d row(s)\n", len(rows))
 		return nil
 	},
 }
@@ -657,9 +681,11 @@ func init() {
 	dbUpdateCmd.Flags().String("title", "", "New database title")
 	dbUpdateCmd.Flags().String("add-prop", "", "Add properties as name:type,... (e.g. Priority:select)")
 	dbQueryCmd.Flags().StringArrayP("filter", "F", nil, "Filter expression (e.g. 'Status=Done')")
+	dbQueryCmd.Flags().String("filter-json", "", "Raw Notion API filter JSON (for complex OR/nested filters)")
 	dbQueryCmd.Flags().StringArrayP("sort", "s", nil, "Sort expression (e.g. 'Date:desc')")
-	dbQueryCmd.Flags().IntP("limit", "l", 0, "Maximum results")
+	dbQueryCmd.Flags().IntP("limit", "l", 0, "Maximum results per page")
 	dbQueryCmd.Flags().String("cursor", "", "Pagination cursor")
+	dbQueryCmd.Flags().Bool("all", false, "Fetch all pages of results")
 	dbAddBulkCmd.Flags().String("file", "", "JSON file with rows to create (required)")
 
 	dbCmd.AddCommand(dbListCmd)

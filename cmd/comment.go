@@ -141,10 +141,65 @@ Examples:
 	},
 }
 
+var commentGetCmd = &cobra.Command{
+	Use:   "get <comment-id>",
+	Short: "Get a comment by ID",
+	Long: `Retrieve a single comment by its ID.
+
+Examples:
+  notion comment get abc123
+  notion comment get abc123 --format json`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		commentID := args[0]
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		data, err := c.Get("/v1/comments/" + commentID)
+		if err != nil {
+			return fmt.Errorf("get comment: %w", err)
+		}
+
+		var result map[string]interface{}
+		if err := json.Unmarshal(data, &result); err != nil {
+			return err
+		}
+
+		if outputFormat == "json" {
+			return render.JSON(result)
+		}
+
+		id, _ := result["id"].(string)
+		createdTime, _ := result["created_time"].(string)
+
+		var text string
+		if richText, ok := result["rich_text"].([]interface{}); ok {
+			for _, t := range richText {
+				if m, ok := t.(map[string]interface{}); ok {
+					if pt, ok := m["plain_text"].(string); ok {
+						text += pt
+					}
+				}
+			}
+		}
+
+		render.Field("Comment", text)
+		render.Field("ID", id)
+		render.Field("Created", createdTime)
+		return nil
+	},
+}
+
 func init() {
 	commentListCmd.Flags().String("cursor", "", "Pagination cursor")
 	commentListCmd.Flags().Bool("all", false, "Fetch all pages of results")
 
 	commentCmd.AddCommand(commentListCmd)
 	commentCmd.AddCommand(commentAddCmd)
+	commentCmd.AddCommand(commentGetCmd)
 }

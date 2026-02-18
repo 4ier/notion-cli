@@ -25,7 +25,8 @@ var blockListCmd = &cobra.Command{
 Examples:
   notion block list <page-id>
   notion block list <page-id> --format json
-  notion block list <page-id> --all`,
+  notion block list <page-id> --all
+  notion block list <page-id> --depth 2`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := getToken()
@@ -36,42 +37,39 @@ Examples:
 		parentID := util.ResolveID(args[0])
 		all, _ := cmd.Flags().GetBool("all")
 		cursor, _ := cmd.Flags().GetString("cursor")
+		depth, _ := cmd.Flags().GetInt("depth")
+		if depth < 1 {
+			depth = 1
+		}
+
 		c := client.New(token)
 		c.SetDebug(debugMode)
 
-		var allResults []interface{}
-		currentCursor := cursor
-
-		for {
-			result, err := c.GetBlockChildren(parentID, 100, currentCursor)
-			if err != nil {
-				return err
-			}
-
-			if outputFormat == "json" && !all {
-				return render.JSON(result)
-			}
-
-			results, _ := result["results"].([]interface{})
-			allResults = append(allResults, results...)
-
-			hasMore, _ := result["has_more"].(bool)
-			if !all || !hasMore {
-				if all && outputFormat == "json" {
-					return render.JSON(map[string]interface{}{"results": allResults})
-				}
-				break
-			}
-			nextCursor, _ := result["next_cursor"].(string)
-			currentCursor = nextCursor
+		allResults, err := fetchBlockChildren(c, parentID, cursor, all)
+		if err != nil {
+			return err
 		}
 
+		// Recursively fetch nested children
+		if depth > 1 {
+			allResults = fetchNestedBlocks(c, allResults, depth-1)
+		}
+
+		if outputFormat == "json" {
+			return render.JSON(map[string]interface{}{"results": allResults})
+		}
+
+		mdMode, _ := cmd.Flags().GetBool("md")
 		for _, b := range allResults {
 			block, ok := b.(map[string]interface{})
 			if !ok {
 				continue
 			}
-			renderBlock(block, 0)
+			if mdMode {
+				renderBlockMarkdown(block, 0)
+			} else {
+				renderBlockRecursive(block, 0)
+			}
 		}
 
 		return nil
@@ -215,27 +213,12 @@ Examples:
 		var children []map[string]interface{}
 
 		if filePath != "" {
-			// Read file and split into paragraph blocks
+			// Read file and parse markdown to blocks
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				return fmt.Errorf("read file: %w", err)
 			}
-			paragraphs := strings.Split(strings.TrimSpace(string(data)), "\n\n")
-			for _, p := range paragraphs {
-				p = strings.TrimSpace(p)
-				if p == "" {
-					continue
-				}
-				children = append(children, map[string]interface{}{
-					"object": "block",
-					"type":   "paragraph",
-					"paragraph": map[string]interface{}{
-						"rich_text": []map[string]interface{}{
-							{"text": map[string]interface{}{"content": p}},
-						},
-					},
-				})
-			}
+			children = parseMarkdownToBlocks(string(data))
 		} else {
 			text := ""
 			if len(args) > 1 {
@@ -365,22 +348,7 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("read file: %w", err)
 			}
-			paragraphs := strings.Split(strings.TrimSpace(string(data)), "\n\n")
-			for _, p := range paragraphs {
-				p = strings.TrimSpace(p)
-				if p == "" {
-					continue
-				}
-				children = append(children, map[string]interface{}{
-					"object": "block",
-					"type":   "paragraph",
-					"paragraph": map[string]interface{}{
-						"rich_text": []map[string]interface{}{
-							{"text": map[string]interface{}{"content": p}},
-						},
-					},
-				})
-			}
+			children = parseMarkdownToBlocks(string(data))
 		} else {
 			text := ""
 			if len(args) > 1 {
@@ -441,6 +409,8 @@ func init() {
 	blockInsertCmd.Flags().String("file", "", "Read content from a file")
 	blockListCmd.Flags().String("cursor", "", "Pagination cursor")
 	blockListCmd.Flags().Bool("all", false, "Fetch all pages of results")
+	blockListCmd.Flags().Int("depth", 1, "Depth of nested blocks to fetch (default 1)")
+	blockListCmd.Flags().Bool("md", false, "Output as Markdown")
 	blockUpdateCmd.Flags().String("text", "", "New text content (required)")
 	blockUpdateCmd.Flags().StringP("type", "t", "", "Block type (auto-detected if not specified)")
 
@@ -478,5 +448,299 @@ func mapBlockType(t string) string {
 		return "divider"
 	default:
 		return t
+	}
+}
+
+// fetchBlockChildren fetches all children of a block with optional pagination.
+func fetchBlockChildren(c *client.Client, parentID, cursor string, all bool) ([]interface{}, error) {
+	var allResults []interface{}
+	currentCursor := cursor
+
+	for {
+		result, err := c.GetBlockChildren(parentID, 100, currentCursor)
+		if err != nil {
+			return nil, err
+		}
+
+		results, _ := result["results"].([]interface{})
+		allResults = append(allResults, results...)
+
+		hasMore, _ := result["has_more"].(bool)
+		if !all || !hasMore {
+			break
+		}
+		nextCursor, _ := result["next_cursor"].(string)
+		currentCursor = nextCursor
+	}
+
+	return allResults, nil
+}
+
+// fetchNestedBlocks recursively fetches children for blocks that have them.
+func fetchNestedBlocks(c *client.Client, blocks []interface{}, remainingDepth int) []interface{} {
+	if remainingDepth <= 0 {
+		return blocks
+	}
+	for _, b := range blocks {
+		block, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		hasChildren, _ := block["has_children"].(bool)
+		if !hasChildren {
+			continue
+		}
+		id, _ := block["id"].(string)
+		if id == "" {
+			continue
+		}
+		children, err := fetchBlockChildren(c, id, "", true)
+		if err != nil {
+			continue
+		}
+		if remainingDepth > 1 {
+			children = fetchNestedBlocks(c, children, remainingDepth-1)
+		}
+		block["_children"] = children
+	}
+	return blocks
+}
+
+// renderBlockRecursive renders a block and its nested children.
+func renderBlockRecursive(block map[string]interface{}, indent int) {
+	renderBlock(block, indent)
+	if children, ok := block["_children"].([]interface{}); ok {
+		for _, child := range children {
+			if childBlock, ok := child.(map[string]interface{}); ok {
+				renderBlockRecursive(childBlock, indent+1)
+			}
+		}
+	}
+}
+
+// parseMarkdownToBlocks converts markdown text to Notion block objects.
+func parseMarkdownToBlocks(content string) []map[string]interface{} {
+	var blocks []map[string]interface{}
+	lines := strings.Split(content, "\n")
+
+	i := 0
+	for i < len(lines) {
+		line := lines[i]
+
+		// Code fence
+		if strings.HasPrefix(line, "```") {
+			lang := strings.TrimPrefix(line, "```")
+			lang = strings.TrimSpace(lang)
+			if lang == "" {
+				lang = "plain text"
+			}
+			var codeLines []string
+			i++
+			for i < len(lines) && !strings.HasPrefix(lines[i], "```") {
+				codeLines = append(codeLines, lines[i])
+				i++
+			}
+			i++ // skip closing ```
+			blocks = append(blocks, map[string]interface{}{
+				"object": "block",
+				"type":   "code",
+				"code": map[string]interface{}{
+					"rich_text": []map[string]interface{}{
+						{"text": map[string]interface{}{"content": strings.Join(codeLines, "\n")}},
+					},
+					"language": lang,
+				},
+			})
+			continue
+		}
+
+		// Skip empty lines
+		if strings.TrimSpace(line) == "" {
+			i++
+			continue
+		}
+
+		// Headings
+		if strings.HasPrefix(line, "### ") {
+			blocks = append(blocks, makeTextBlock("heading_3", strings.TrimPrefix(line, "### ")))
+			i++
+			continue
+		}
+		if strings.HasPrefix(line, "## ") {
+			blocks = append(blocks, makeTextBlock("heading_2", strings.TrimPrefix(line, "## ")))
+			i++
+			continue
+		}
+		if strings.HasPrefix(line, "# ") {
+			blocks = append(blocks, makeTextBlock("heading_1", strings.TrimPrefix(line, "# ")))
+			i++
+			continue
+		}
+
+		// Todo (must check before bullet — "- [ ]" starts with "- ")
+		if strings.HasPrefix(line, "- [ ] ") {
+			block := makeTextBlock("to_do", line[6:])
+			block["to_do"].(map[string]interface{})["checked"] = false
+			blocks = append(blocks, block)
+			i++
+			continue
+		}
+		if strings.HasPrefix(line, "- [x] ") || strings.HasPrefix(line, "- [X] ") {
+			block := makeTextBlock("to_do", line[6:])
+			block["to_do"].(map[string]interface{})["checked"] = true
+			blocks = append(blocks, block)
+			i++
+			continue
+		}
+
+		// Bullet list
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
+			blocks = append(blocks, makeTextBlock("bulleted_list_item", line[2:]))
+			i++
+			continue
+		}
+
+		// Numbered list
+		if len(line) > 2 && line[0] >= '0' && line[0] <= '9' && strings.Contains(line[:5], ". ") {
+			idx := strings.Index(line, ". ")
+			blocks = append(blocks, makeTextBlock("numbered_list_item", line[idx+2:]))
+			i++
+			continue
+		}
+
+		// Quote
+		if strings.HasPrefix(line, "> ") {
+			blocks = append(blocks, makeTextBlock("quote", strings.TrimPrefix(line, "> ")))
+			i++
+			continue
+		}
+
+		// Divider
+		if line == "---" || line == "***" || line == "___" {
+			blocks = append(blocks, map[string]interface{}{
+				"object":  "block",
+				"type":    "divider",
+				"divider": map[string]interface{}{},
+			})
+			i++
+			continue
+		}
+
+		// Default: paragraph
+		blocks = append(blocks, makeTextBlock("paragraph", line))
+		i++
+	}
+
+	return blocks
+}
+
+func makeTextBlock(blockType, text string) map[string]interface{} {
+	return map[string]interface{}{
+		"object": "block",
+		"type":   blockType,
+		blockType: map[string]interface{}{
+			"rich_text": []map[string]interface{}{
+				{"text": map[string]interface{}{"content": strings.TrimSpace(text)}},
+			},
+		},
+	}
+}
+
+// renderBlockMarkdown outputs a block as clean Markdown.
+func renderBlockMarkdown(block map[string]interface{}, indent int) {
+	blockType, _ := block["type"].(string)
+
+	getText := func(key string) string {
+		if data, ok := block[key].(map[string]interface{}); ok {
+			if richText, ok := data["rich_text"].([]interface{}); ok {
+				var parts []string
+				for _, t := range richText {
+					if m, ok := t.(map[string]interface{}); ok {
+						if pt, ok := m["plain_text"].(string); ok {
+							parts = append(parts, pt)
+						}
+					}
+				}
+				return strings.Join(parts, "")
+			}
+		}
+		return ""
+	}
+
+	switch blockType {
+	case "paragraph":
+		text := getText("paragraph")
+		fmt.Println(text)
+		fmt.Println()
+	case "heading_1":
+		fmt.Printf("# %s\n\n", getText("heading_1"))
+	case "heading_2":
+		fmt.Printf("## %s\n\n", getText("heading_2"))
+	case "heading_3":
+		fmt.Printf("### %s\n\n", getText("heading_3"))
+	case "bulleted_list_item":
+		fmt.Printf("- %s\n", getText("bulleted_list_item"))
+	case "numbered_list_item":
+		fmt.Printf("1. %s\n", getText("numbered_list_item"))
+	case "to_do":
+		text := getText("to_do")
+		data, _ := block["to_do"].(map[string]interface{})
+		checked, _ := data["checked"].(bool)
+		if checked {
+			fmt.Printf("- [x] %s\n", text)
+		} else {
+			fmt.Printf("- [ ] %s\n", text)
+		}
+	case "toggle":
+		fmt.Printf("- %s\n", getText("toggle"))
+	case "code":
+		data, _ := block["code"].(map[string]interface{})
+		lang, _ := data["language"].(string)
+		if lang == "plain text" {
+			lang = ""
+		}
+		fmt.Printf("```%s\n%s\n```\n\n", lang, getText("code"))
+	case "quote":
+		fmt.Printf("> %s\n\n", getText("quote"))
+	case "callout":
+		fmt.Printf("> 💡 %s\n\n", getText("callout"))
+	case "divider":
+		fmt.Println("---")
+		fmt.Println()
+	case "bookmark":
+		if data, ok := block["bookmark"].(map[string]interface{}); ok {
+			url, _ := data["url"].(string)
+			fmt.Printf("[%s](%s)\n\n", url, url)
+		}
+	case "image":
+		imageURL := ""
+		if data, ok := block["image"].(map[string]interface{}); ok {
+			if f, ok := data["file"].(map[string]interface{}); ok {
+				imageURL, _ = f["url"].(string)
+			} else if e, ok := data["external"].(map[string]interface{}); ok {
+				imageURL, _ = e["url"].(string)
+			}
+		}
+		if imageURL != "" {
+			fmt.Printf("![image](%s)\n\n", imageURL)
+		} else {
+			fmt.Println("![image]()")
+			fmt.Println()
+		}
+	default:
+		text := getText(blockType)
+		if text != "" {
+			fmt.Println(text)
+			fmt.Println()
+		}
+	}
+
+	// Recurse into children
+	if children, ok := block["_children"].([]interface{}); ok {
+		for _, child := range children {
+			if childBlock, ok := child.(map[string]interface{}); ok {
+				renderBlockMarkdown(childBlock, indent+1)
+			}
+		}
 	}
 }
