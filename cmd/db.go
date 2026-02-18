@@ -213,12 +213,16 @@ Examples:
 
 		if outputFormat == "json" {
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 
 		var result map[string]interface{}
-		json.Unmarshal(data, &result)
+		if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 		id, _ := result["id"].(string)
 		url, _ := result["url"].(string)
 
@@ -288,7 +292,9 @@ Examples:
 
 		if outputFormat == "json" {
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 
@@ -357,12 +363,16 @@ Examples:
 
 		if outputFormat == "json" {
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 
 		var result map[string]interface{}
-		json.Unmarshal(data, &result)
+		if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 		id, _ := result["id"].(string)
 		url, _ := result["url"].(string)
 
@@ -521,9 +531,7 @@ Examples:
 		}
 
 		headers := make([]string, len(sortedNames))
-		for i, n := range sortedNames {
-			headers[i] = n
-		}
+		copy(headers, sortedNames)
 
 		var rows [][]string
 		for _, r := range allResults {

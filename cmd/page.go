@@ -351,7 +351,9 @@ Examples:
 
 		if outputFormat == "json" {
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 
@@ -397,7 +399,9 @@ Examples:
 
 		if outputFormat == "json" {
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 
@@ -490,7 +494,9 @@ Examples:
 
 		if outputFormat == "json" {
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 
@@ -526,7 +532,9 @@ Examples:
 				return fmt.Errorf("get property: %w", err)
 			}
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 
@@ -537,7 +545,7 @@ Examples:
 		}
 
 		if outputFormat == "json" {
-			props, _ := page["properties"]
+			props := page["properties"]
 			return render.JSON(props)
 		}
 
@@ -589,7 +597,9 @@ Examples:
 
 		if outputFormat == "json" {
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 
@@ -665,7 +675,9 @@ Examples:
 
 		if outputFormat == "json" {
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 
@@ -743,7 +755,9 @@ Examples:
 
 		if outputFormat == "json" {
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 

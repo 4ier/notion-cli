@@ -127,12 +127,16 @@ Examples:
 
 		if outputFormat == "json" {
 			var result map[string]interface{}
-			json.Unmarshal(data, &result)
+			if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 			return render.JSON(result)
 		}
 
 		var result map[string]interface{}
-		json.Unmarshal(data, &result)
+		if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
 		id, _ := result["id"].(string)
 
 		render.Title("✓", "Comment added")
