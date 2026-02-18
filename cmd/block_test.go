@@ -204,3 +204,34 @@ func TestMakeTextBlock(t *testing.T) {
 		t.Errorf("content = %v, want 'Hello World'", text["content"])
 	}
 }
+
+func TestMapBlockType(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"h1", "heading_1"},
+		{"h2", "heading_2"},
+		{"h3", "heading_3"},
+		{"heading1", "heading_1"},
+		{"bullet", "bulleted_list_item"},
+		{"numbered", "numbered_list_item"},
+		{"todo", "to_do"},
+		{"p", "paragraph"},
+		{"paragraph", "paragraph"},
+		{"quote", "quote"},
+		{"code", "code"},
+		{"callout", "callout"},
+		{"divider", "divider"},
+		{"unknown_type", "unknown_type"}, // passthrough
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := mapBlockType(tt.input)
+			if got != tt.want {
+				t.Errorf("mapBlockType(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

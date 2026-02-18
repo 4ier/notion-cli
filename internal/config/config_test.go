@@ -3,19 +3,23 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
-func TestSaveAndLoad(t *testing.T) {
-	// Use temp dir to avoid touching real config
+func setupTestHome(t *testing.T) {
+	t.Helper()
 	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
 
-	// Create config dir
-	configDir := filepath.Join(tmpDir, ".config", "notion-cli")
-	os.MkdirAll(configDir, 0700)
+	// Use t.Setenv so env is automatically restored after each test.
+	// Set XDG_CONFIG_HOME to a subdir of tmpDir — configDir() checks this first,
+	// so we bypass os.UserHomeDir() entirely (avoids caching issues on CI).
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmpDir, ".config"))
+	t.Setenv("HOME", tmpDir)
+}
+
+func TestSaveAndLoad(t *testing.T) {
+	setupTestHome(t)
 
 	cfg := &Config{
 		Token:         "test-token-value",
@@ -48,10 +52,7 @@ func TestSaveAndLoad(t *testing.T) {
 }
 
 func TestLoadMissing(t *testing.T) {
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	setupTestHome(t)
 
 	_, err := Load()
 	if err == nil {
@@ -60,21 +61,18 @@ func TestLoadMissing(t *testing.T) {
 }
 
 func TestConfigFilePermissions(t *testing.T) {
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
-
-	configDir := filepath.Join(tmpDir, ".config", "notion-cli")
-	os.MkdirAll(configDir, 0700)
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file permissions not applicable on Windows")
+	}
+	setupTestHome(t)
 
 	cfg := &Config{Token: "secret-token"}
 	if err := Save(cfg); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	configPath := filepath.Join(configDir, "config.json")
-	info, err := os.Stat(configPath)
+	configFile := configPath()
+	info, err := os.Stat(configFile)
 	if err != nil {
 		t.Fatalf("Stat() error = %v", err)
 	}

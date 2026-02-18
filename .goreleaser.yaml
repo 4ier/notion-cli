@@ -23,11 +23,11 @@ builds:
 
 archives:
   - format: tar.gz
-    name_template: >-
-      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     format_overrides:
       - goos: windows
         format: zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
 
 checksum:
   name_template: "checksums.txt"
@@ -48,11 +48,6 @@ brews:
       token: "{{ .Env.GITHUB_TOKEN }}"
     homepage: "https://github.com/4ier/notion-cli"
     description: "Full-featured CLI for Notion. Like gh for GitHub, but for Notion."
-    license: "MIT"
-    install: |
-      bin.install "notion"
-    test: |
-      system "#{bin}/notion", "--version"
 
 scoops:
   - repository:
@@ -62,30 +57,6 @@ scoops:
     homepage: "https://github.com/4ier/notion-cli"
     description: "Full-featured CLI for Notion. Like gh for GitHub, but for Notion."
     license: "MIT"
-
-dockers:
-  - image_templates:
-      - "ghcr.io/4ier/notion-cli:{{ .Version }}-amd64"
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/amd64"
-    goarch: amd64
-  - image_templates:
-      - "ghcr.io/4ier/notion-cli:{{ .Version }}-arm64"
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/arm64"
-    goarch: arm64
-
-docker_manifests:
-  - name_template: "ghcr.io/4ier/notion-cli:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/4ier/notion-cli:{{ .Version }}-amd64"
-      - "ghcr.io/4ier/notion-cli:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/4ier/notion-cli:latest"
-    image_templates:
-      - "ghcr.io/4ier/notion-cli:{{ .Version }}-amd64"
-      - "ghcr.io/4ier/notion-cli:{{ .Version }}-arm64"
 
 nfpms:
   - homepage: "https://github.com/4ier/notion-cli"

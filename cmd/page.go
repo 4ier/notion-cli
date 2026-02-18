@@ -72,6 +72,23 @@ Examples:
 			return render.JSON(combined)
 		}
 
+		// Render blocks
+		results, _ := blocks["results"].([]interface{})
+
+		if outputFormat == "md" || outputFormat == "markdown" {
+			// Pure markdown output
+			title := render.ExtractTitle(page)
+			fmt.Printf("# %s\n\n", title)
+			for _, b := range results {
+				block, ok := b.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				renderBlockMarkdown(block, 0)
+			}
+			return nil
+		}
+
 		// Pretty print
 		title := render.ExtractTitle(page)
 		lastEdited, _ := page["last_edited_time"].(string)
@@ -81,8 +98,6 @@ Examples:
 		render.Subtitle(fmt.Sprintf("Last edited: %s", lastEdited))
 		fmt.Println()
 
-		// Render blocks
-		results, _ := blocks["results"].([]interface{})
 		for _, b := range results {
 			block, ok := b.(map[string]interface{})
 			if !ok {

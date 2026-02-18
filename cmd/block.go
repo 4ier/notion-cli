@@ -60,6 +60,9 @@ Examples:
 		}
 
 		mdMode, _ := cmd.Flags().GetBool("md")
+		if outputFormat == "md" || outputFormat == "markdown" {
+			mdMode = true
+		}
 		for _, b := range allResults {
 			block, ok := b.(map[string]interface{})
 			if !ok {
@@ -649,6 +652,7 @@ func makeTextBlock(blockType, text string) map[string]interface{} {
 // renderBlockMarkdown outputs a block as clean Markdown.
 func renderBlockMarkdown(block map[string]interface{}, indent int) {
 	blockType, _ := block["type"].(string)
+	prefix := strings.Repeat("  ", indent) // 2-space indent for nested blocks
 
 	getText := func(key string) string {
 		if data, ok := block[key].(map[string]interface{}); ok {
@@ -670,47 +674,66 @@ func renderBlockMarkdown(block map[string]interface{}, indent int) {
 	switch blockType {
 	case "paragraph":
 		text := getText("paragraph")
-		fmt.Println(text)
-		fmt.Println()
+		if text != "" {
+			fmt.Printf("%s%s\n\n", prefix, text)
+		} else {
+			fmt.Println()
+		}
 	case "heading_1":
-		fmt.Printf("# %s\n\n", getText("heading_1"))
+		fmt.Printf("%s# %s\n\n", prefix, getText("heading_1"))
 	case "heading_2":
-		fmt.Printf("## %s\n\n", getText("heading_2"))
+		fmt.Printf("%s## %s\n\n", prefix, getText("heading_2"))
 	case "heading_3":
-		fmt.Printf("### %s\n\n", getText("heading_3"))
+		fmt.Printf("%s### %s\n\n", prefix, getText("heading_3"))
 	case "bulleted_list_item":
-		fmt.Printf("- %s\n", getText("bulleted_list_item"))
+		fmt.Printf("%s- %s\n", prefix, getText("bulleted_list_item"))
 	case "numbered_list_item":
-		fmt.Printf("1. %s\n", getText("numbered_list_item"))
+		fmt.Printf("%s1. %s\n", prefix, getText("numbered_list_item"))
 	case "to_do":
 		text := getText("to_do")
 		data, _ := block["to_do"].(map[string]interface{})
 		checked, _ := data["checked"].(bool)
 		if checked {
-			fmt.Printf("- [x] %s\n", text)
+			fmt.Printf("%s- [x] %s\n", prefix, text)
 		} else {
-			fmt.Printf("- [ ] %s\n", text)
+			fmt.Printf("%s- [ ] %s\n", prefix, text)
 		}
 	case "toggle":
-		fmt.Printf("- %s\n", getText("toggle"))
+		fmt.Printf("%s- %s\n", prefix, getText("toggle"))
 	case "code":
 		data, _ := block["code"].(map[string]interface{})
 		lang, _ := data["language"].(string)
 		if lang == "plain text" {
 			lang = ""
 		}
-		fmt.Printf("```%s\n%s\n```\n\n", lang, getText("code"))
+		fmt.Printf("%s```%s\n%s\n%s```\n\n", prefix, lang, getText("code"), prefix)
 	case "quote":
-		fmt.Printf("> %s\n\n", getText("quote"))
+		fmt.Printf("%s> %s\n\n", prefix, getText("quote"))
 	case "callout":
-		fmt.Printf("> 💡 %s\n\n", getText("callout"))
+		data, _ := block["callout"].(map[string]interface{})
+		icon := "💡"
+		if iconObj, ok := data["icon"].(map[string]interface{}); ok {
+			if emoji, ok := iconObj["emoji"].(string); ok {
+				icon = emoji
+			}
+		}
+		fmt.Printf("%s> %s %s\n\n", prefix, icon, getText("callout"))
 	case "divider":
-		fmt.Println("---")
-		fmt.Println()
+		fmt.Printf("%s---\n\n", prefix)
 	case "bookmark":
 		if data, ok := block["bookmark"].(map[string]interface{}); ok {
 			url, _ := data["url"].(string)
-			fmt.Printf("[%s](%s)\n\n", url, url)
+			caption := ""
+			if captions, ok := data["caption"].([]interface{}); ok && len(captions) > 0 {
+				if m, ok := captions[0].(map[string]interface{}); ok {
+					caption, _ = m["plain_text"].(string)
+				}
+			}
+			if caption != "" {
+				fmt.Printf("%s[%s](%s)\n\n", prefix, caption, url)
+			} else {
+				fmt.Printf("%s[%s](%s)\n\n", prefix, url, url)
+			}
 		}
 	case "image":
 		imageURL := ""
@@ -722,16 +745,38 @@ func renderBlockMarkdown(block map[string]interface{}, indent int) {
 			}
 		}
 		if imageURL != "" {
-			fmt.Printf("![image](%s)\n\n", imageURL)
-		} else {
-			fmt.Println("![image]()")
-			fmt.Println()
+			fmt.Printf("%s![image](%s)\n\n", prefix, imageURL)
 		}
+	case "embed":
+		if data, ok := block["embed"].(map[string]interface{}); ok {
+			url, _ := data["url"].(string)
+			fmt.Printf("%s[embed](%s)\n\n", prefix, url)
+		}
+	case "video":
+		videoURL := ""
+		if data, ok := block["video"].(map[string]interface{}); ok {
+			if f, ok := data["file"].(map[string]interface{}); ok {
+				videoURL, _ = f["url"].(string)
+			} else if e, ok := data["external"].(map[string]interface{}); ok {
+				videoURL, _ = e["url"].(string)
+			}
+		}
+		if videoURL != "" {
+			fmt.Printf("%s[video](%s)\n\n", prefix, videoURL)
+		}
+	case "table_of_contents":
+		fmt.Printf("%s[TOC]\n\n", prefix)
+	case "equation":
+		if data, ok := block["equation"].(map[string]interface{}); ok {
+			expr, _ := data["expression"].(string)
+			fmt.Printf("%s$$\n%s%s\n%s$$\n\n", prefix, prefix, expr, prefix)
+		}
+	case "column_list", "synced_block":
+		// Container blocks — just render children
 	default:
 		text := getText(blockType)
 		if text != "" {
-			fmt.Println(text)
-			fmt.Println()
+			fmt.Printf("%s%s\n\n", prefix, text)
 		}
 	}
 
