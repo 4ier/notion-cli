@@ -7,6 +7,10 @@
 </p>
 
 <p align="center">
+  <img src="https://github.com/4ier/notion-cli/releases/download/v0.2.0/demo.gif" alt="demo" width="640">
+</p>
+
+<p align="center">
   <a href="https://github.com/4ier/notion-cli/releases"><img src="https://img.shields.io/github/v/release/4ier/notion-cli?style=flat-square" alt="Release"></a>
   <a href="https://github.com/4ier/notion-cli/actions"><img src="https://img.shields.io/github/actions/workflow/status/4ier/notion-cli/test.yml?style=flat-square&label=tests" alt="Tests"></a>
   <a href="https://github.com/4ier/notion-cli/blob/main/LICENSE"><img src="https://img.shields.io/github/license/4ier/notion-cli?style=flat-square" alt="License"></a>
