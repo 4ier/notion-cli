@@ -56,11 +56,14 @@ func getToken() (string, error) {
 		return token, nil
 	}
 
-	// 2. Config file
+	// 2. Config file (with profile support)
 	cfg, err := config.Load()
-	if err == nil && cfg.Token != "" {
-		return cfg.Token, nil
+	if err == nil {
+		profile := cfg.GetCurrentProfile()
+		if profile != nil && profile.Token != "" {
+			return profile.Token, nil
+		}
 	}
 
-	return "", fmt.Errorf("not authenticated. Run 'notion auth login --token' or set NOTION_TOKEN")
+	return "", fmt.Errorf("not authenticated. Run 'notion auth login --with-token' or set NOTION_TOKEN")
 }

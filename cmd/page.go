@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -766,6 +768,164 @@ Examples:
 	},
 }
 
+var pageEditCmd = &cobra.Command{
+	Use:   "edit <page-id|url>",
+	Short: "Edit a page in your text editor",
+	Long: `Open a page's content as Markdown in your text editor.
+
+After editing, changes will be synced back to Notion by:
+1. Deleting existing blocks
+2. Appending the new blocks from your edited Markdown
+
+The editor is chosen in this order: --editor flag, $VISUAL, $EDITOR, vi.
+
+Examples:
+  notion page edit abc123
+  notion page edit abc123 --editor nano
+  notion page edit https://notion.so/My-Page-abc123`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		pageID := util.ResolveID(args[0])
+		editorFlag, _ := cmd.Flags().GetString("editor")
+
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		// Get page metadata for title
+		page, err := c.GetPage(pageID)
+		if err != nil {
+			return fmt.Errorf("get page: %w", err)
+		}
+		title := render.ExtractTitle(page)
+
+		// Get all page blocks
+		allBlocks, err := fetchBlockChildren(c, pageID, "", true)
+		if err != nil {
+			return fmt.Errorf("get blocks: %w", err)
+		}
+
+		// Render blocks to markdown string
+		var oldMD bytes.Buffer
+		oldMD.WriteString(fmt.Sprintf("# %s\n\n", title))
+		for _, b := range allBlocks {
+			block, ok := b.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			renderBlockMarkdownToBuffer(&oldMD, block, 0)
+		}
+		originalContent := oldMD.String()
+
+		// Create temp file
+		tmpFile, err := os.CreateTemp("", "notion-edit-*.md")
+		if err != nil {
+			return fmt.Errorf("create temp file: %w", err)
+		}
+		tmpPath := tmpFile.Name()
+		defer os.Remove(tmpPath)
+
+		if _, err := tmpFile.WriteString(originalContent); err != nil {
+			tmpFile.Close()
+			return fmt.Errorf("write temp file: %w", err)
+		}
+		tmpFile.Close()
+
+		// Determine editor
+		editor := editorFlag
+		if editor == "" {
+			editor = os.Getenv("VISUAL")
+		}
+		if editor == "" {
+			editor = os.Getenv("EDITOR")
+		}
+		if editor == "" {
+			editor = "vi"
+		}
+
+		// Open editor
+		editorCmd := exec.Command(editor, tmpPath)
+		editorCmd.Stdin = os.Stdin
+		editorCmd.Stdout = os.Stdout
+		editorCmd.Stderr = os.Stderr
+
+		if err := editorCmd.Run(); err != nil {
+			return fmt.Errorf("editor failed: %w", err)
+		}
+
+		// Read edited content
+		editedBytes, err := os.ReadFile(tmpPath)
+		if err != nil {
+			return fmt.Errorf("read edited file: %w", err)
+		}
+		editedContent := string(editedBytes)
+
+		// Check if content changed
+		if editedContent == originalContent {
+			fmt.Println("No changes made.")
+			return nil
+		}
+
+		// Parse edited markdown to blocks (skip the title line)
+		lines := strings.Split(editedContent, "\n")
+		startIdx := 0
+		for i, line := range lines {
+			if strings.HasPrefix(line, "# ") {
+				startIdx = i + 1
+				break
+			}
+		}
+		// Skip empty lines after title
+		for startIdx < len(lines) && strings.TrimSpace(lines[startIdx]) == "" {
+			startIdx++
+		}
+		contentWithoutTitle := strings.Join(lines[startIdx:], "\n")
+		newBlocks := parseMarkdownToBlocks(contentWithoutTitle)
+
+		if len(newBlocks) == 0 && len(allBlocks) == 0 {
+			fmt.Println("No changes to apply.")
+			return nil
+		}
+
+		// Delete existing blocks
+		deleted := 0
+		for _, b := range allBlocks {
+			block, ok := b.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			blockID, _ := block["id"].(string)
+			if blockID == "" {
+				continue
+			}
+			_, err := c.Delete("/v1/blocks/" + blockID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to delete block %s: %v\n", blockID, err)
+				continue
+			}
+			deleted++
+		}
+
+		// Append new blocks
+		if len(newBlocks) > 0 {
+			reqBody := map[string]interface{}{
+				"children": newBlocks,
+			}
+			_, err = c.Patch(fmt.Sprintf("/v1/blocks/%s/children", pageID), reqBody)
+			if err != nil {
+				return fmt.Errorf("append blocks: %w", err)
+			}
+		}
+
+		fmt.Printf("✓ Page updated (deleted %d blocks, added %d blocks)\n", deleted, len(newBlocks))
+		return nil
+	},
+}
+
 func init() {
 	pageListCmd.Flags().IntP("limit", "l", 10, "Maximum results")
 	pageListCmd.Flags().String("cursor", "", "Pagination cursor")
@@ -778,6 +938,7 @@ func init() {
 	pageLinkCmd.Flags().String("to", "", "Target page ID or URL to link (required)")
 	pageUnlinkCmd.Flags().String("prop", "", "Relation property name (required)")
 	pageUnlinkCmd.Flags().String("from", "", "Target page ID or URL to unlink (required)")
+	pageEditCmd.Flags().String("editor", "", "Editor to use (default: $VISUAL, $EDITOR, or vi)")
 
 	pageCmd.AddCommand(pageViewCmd)
 	pageCmd.AddCommand(pageListCmd)
@@ -790,11 +951,108 @@ func init() {
 	pageCmd.AddCommand(pagePropsCmd)
 	pageCmd.AddCommand(pageLinkCmd)
 	pageCmd.AddCommand(pageUnlinkCmd)
+	pageCmd.AddCommand(pageEditCmd)
 }
 
 // openBrowser opens a URL in the default browser.
 func openBrowser(url string) error {
 	return openURL(url)
+}
+
+// renderBlockMarkdownToBuffer writes a block as markdown to a buffer.
+func renderBlockMarkdownToBuffer(buf *bytes.Buffer, block map[string]interface{}, indent int) {
+	blockType, _ := block["type"].(string)
+	prefix := strings.Repeat("  ", indent)
+
+	getText := func(key string) string {
+		if data, ok := block[key].(map[string]interface{}); ok {
+			if richText, ok := data["rich_text"].([]interface{}); ok {
+				var parts []string
+				for _, t := range richText {
+					if m, ok := t.(map[string]interface{}); ok {
+						if pt, ok := m["plain_text"].(string); ok {
+							parts = append(parts, pt)
+						}
+					}
+				}
+				return strings.Join(parts, "")
+			}
+		}
+		return ""
+	}
+
+	switch blockType {
+	case "paragraph":
+		text := getText("paragraph")
+		if text != "" {
+			buf.WriteString(fmt.Sprintf("%s%s\n\n", prefix, text))
+		} else {
+			buf.WriteString("\n")
+		}
+	case "heading_1":
+		buf.WriteString(fmt.Sprintf("%s# %s\n\n", prefix, getText("heading_1")))
+	case "heading_2":
+		buf.WriteString(fmt.Sprintf("%s## %s\n\n", prefix, getText("heading_2")))
+	case "heading_3":
+		buf.WriteString(fmt.Sprintf("%s### %s\n\n", prefix, getText("heading_3")))
+	case "bulleted_list_item":
+		buf.WriteString(fmt.Sprintf("%s- %s\n", prefix, getText("bulleted_list_item")))
+	case "numbered_list_item":
+		buf.WriteString(fmt.Sprintf("%s1. %s\n", prefix, getText("numbered_list_item")))
+	case "to_do":
+		text := getText("to_do")
+		data, _ := block["to_do"].(map[string]interface{})
+		checked, _ := data["checked"].(bool)
+		if checked {
+			buf.WriteString(fmt.Sprintf("%s- [x] %s\n", prefix, text))
+		} else {
+			buf.WriteString(fmt.Sprintf("%s- [ ] %s\n", prefix, text))
+		}
+	case "toggle":
+		buf.WriteString(fmt.Sprintf("%s- %s\n", prefix, getText("toggle")))
+	case "code":
+		data, _ := block["code"].(map[string]interface{})
+		lang, _ := data["language"].(string)
+		if lang == "plain text" {
+			lang = ""
+		}
+		buf.WriteString(fmt.Sprintf("%s```%s\n%s\n%s```\n\n", prefix, lang, getText("code"), prefix))
+	case "quote":
+		buf.WriteString(fmt.Sprintf("%s> %s\n\n", prefix, getText("quote")))
+	case "callout":
+		data, _ := block["callout"].(map[string]interface{})
+		icon := "💡"
+		if iconObj, ok := data["icon"].(map[string]interface{}); ok {
+			if emoji, ok := iconObj["emoji"].(string); ok {
+				icon = emoji
+			}
+		}
+		buf.WriteString(fmt.Sprintf("%s> %s %s\n\n", prefix, icon, getText("callout")))
+	case "divider":
+		buf.WriteString(fmt.Sprintf("%s---\n\n", prefix))
+	case "bookmark":
+		if data, ok := block["bookmark"].(map[string]interface{}); ok {
+			url, _ := data["url"].(string)
+			buf.WriteString(fmt.Sprintf("%s[%s](%s)\n\n", prefix, url, url))
+		}
+	case "image":
+		imageURL := ""
+		if data, ok := block["image"].(map[string]interface{}); ok {
+			if f, ok := data["file"].(map[string]interface{}); ok {
+				imageURL, _ = f["url"].(string)
+			} else if e, ok := data["external"].(map[string]interface{}); ok {
+				imageURL, _ = e["url"].(string)
+			}
+		}
+		if imageURL != "" {
+			buf.WriteString(fmt.Sprintf("%s![image](%s)\n\n", prefix, imageURL))
+		}
+	default:
+		text := getText(blockType)
+		if text != "" {
+			buf.WriteString(fmt.Sprintf("%s%s\n\n", prefix, text))
+		}
+	}
 }
 
 // buildPropertyValue converts a string value to a Notion property value based on type.

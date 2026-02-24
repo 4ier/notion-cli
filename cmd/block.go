@@ -408,6 +408,153 @@ Examples:
 	},
 }
 
+var blockMoveCmd = &cobra.Command{
+	Use:   "move <block-id|url>",
+	Short: "Move a block to a new position",
+	Long: `Move a block within its parent or to a different parent.
+
+Use --after to position after a specific block.
+Use --before to position before a specific block.
+Use --parent to move to a different parent block/page.
+
+Examples:
+  notion block move abc123 --after def456
+  notion block move abc123 --before ghi789
+  notion block move abc123 --parent xyz000
+  notion block move abc123 --parent xyz000 --after def456`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		blockID := util.ResolveID(args[0])
+		afterID, _ := cmd.Flags().GetString("after")
+		beforeID, _ := cmd.Flags().GetString("before")
+		parentID, _ := cmd.Flags().GetString("parent")
+
+		if afterID == "" && beforeID == "" && parentID == "" {
+			return fmt.Errorf("at least one of --after, --before, or --parent is required")
+		}
+
+		if afterID != "" && beforeID != "" {
+			return fmt.Errorf("cannot specify both --after and --before")
+		}
+
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		// Get the current block to find its parent if not specified
+		currentBlock, err := c.GetBlock(blockID)
+		if err != nil {
+			return fmt.Errorf("get block: %w", err)
+		}
+
+		// Determine the target parent
+		targetParentID := parentID
+		if targetParentID == "" {
+			// Use the current parent
+			parent, _ := currentBlock["parent"].(map[string]interface{})
+			if pid, ok := parent["page_id"].(string); ok {
+				targetParentID = pid
+			} else if pid, ok := parent["block_id"].(string); ok {
+				targetParentID = pid
+			}
+		} else {
+			targetParentID = util.ResolveID(targetParentID)
+		}
+
+		if targetParentID == "" {
+			return fmt.Errorf("could not determine parent block/page")
+		}
+
+		// Handle --before by finding the block that comes before the target
+		var afterBlockID string
+		if beforeID != "" {
+			beforeID = util.ResolveID(beforeID)
+			// Get all children of the parent
+			children, err := fetchBlockChildren(c, targetParentID, "", true)
+			if err != nil {
+				return fmt.Errorf("get parent children: %w", err)
+			}
+
+			// Find the block that comes before the target
+			for i, child := range children {
+				childBlock, ok := child.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				childID, _ := childBlock["id"].(string)
+				if childID == beforeID {
+					if i > 0 {
+						// Get the ID of the previous block
+						prevBlock, _ := children[i-1].(map[string]interface{})
+						afterBlockID, _ = prevBlock["id"].(string)
+					}
+					// If i == 0, afterBlockID stays empty (insert at beginning)
+					break
+				}
+			}
+		} else if afterID != "" {
+			afterBlockID = util.ResolveID(afterID)
+		}
+
+		// Build the request body for moving the block
+		// Note: Notion API uses PATCH /v1/blocks/{id} with parent and after fields
+		body := map[string]interface{}{}
+
+		// Set the parent (try page_id first, then block_id)
+		// We need to check if the parent is a page or a block
+		parentBlock, err := c.GetBlock(targetParentID)
+		if err == nil {
+			parentType, _ := parentBlock["type"].(string)
+			if parentType == "child_page" || parentType == "" {
+				// It's a page
+				body["parent"] = map[string]interface{}{
+					"page_id": targetParentID,
+				}
+			} else {
+				// It's a block
+				body["parent"] = map[string]interface{}{
+					"block_id": targetParentID,
+				}
+			}
+		} else {
+			// Assume it's a page if we can't get the block
+			body["parent"] = map[string]interface{}{
+				"page_id": targetParentID,
+			}
+		}
+
+		if afterBlockID != "" {
+			body["after"] = afterBlockID
+		}
+
+		data, err := c.Patch("/v1/blocks/"+blockID, body)
+		if err != nil {
+			return fmt.Errorf("move block: %w", err)
+		}
+
+		if outputFormat == "json" {
+			var result map[string]interface{}
+			if err := json.Unmarshal(data, &result); err != nil {
+				return fmt.Errorf("parse response: %w", err)
+			}
+			return render.JSON(result)
+		}
+
+		if afterBlockID != "" {
+			fmt.Printf("✓ Block moved after %s\n", afterBlockID)
+		} else if beforeID != "" {
+			fmt.Printf("✓ Block moved before %s\n", beforeID)
+		} else {
+			fmt.Printf("✓ Block moved to %s\n", targetParentID)
+		}
+		return nil
+	},
+}
+
 func init() {
 	blockAppendCmd.Flags().StringP("type", "t", "paragraph", "Block type: paragraph, h1, h2, h3, todo, bullet, numbered, quote, code, callout, divider")
 	blockAppendCmd.Flags().String("lang", "plain text", "Language for code blocks (e.g. go, python, bash)")
@@ -422,6 +569,9 @@ func init() {
 	blockListCmd.Flags().Bool("md", false, "Output as Markdown")
 	blockUpdateCmd.Flags().String("text", "", "New text content (required)")
 	blockUpdateCmd.Flags().StringP("type", "t", "", "Block type (auto-detected if not specified)")
+	blockMoveCmd.Flags().String("after", "", "Block ID to position after")
+	blockMoveCmd.Flags().String("before", "", "Block ID to position before")
+	blockMoveCmd.Flags().String("parent", "", "New parent block/page ID to move to")
 
 	blockCmd.AddCommand(blockListCmd)
 	blockCmd.AddCommand(blockGetCmd)
@@ -429,6 +579,7 @@ func init() {
 	blockCmd.AddCommand(blockInsertCmd)
 	blockCmd.AddCommand(blockUpdateCmd)
 	blockCmd.AddCommand(blockDeleteCmd)
+	blockCmd.AddCommand(blockMoveCmd)
 }
 
 func mapBlockType(t string) string {

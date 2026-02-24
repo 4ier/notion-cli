@@ -680,6 +680,204 @@ Examples:
 	},
 }
 
+var dbExportCmd = &cobra.Command{
+	Use:   "export <db-id|url>",
+	Short: "Export database rows to CSV, JSON, or Markdown",
+	Long: `Export all rows from a database to various formats.
+
+Formats:
+  csv  - Comma-separated values (default)
+  json - Array of JSON objects
+  md   - Markdown table
+
+Examples:
+  notion db export abc123
+  notion db export abc123 --format json
+  notion db export abc123 --format md --output report.md
+  notion db export abc123 -o data.csv`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		dbID := util.ResolveID(args[0])
+		format, _ := cmd.Flags().GetString("format")
+		outputPath, _ := cmd.Flags().GetString("output")
+
+		if format == "" {
+			format = "csv"
+		}
+
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		// Get database schema
+		db, err := c.GetDatabase(dbID)
+		if err != nil {
+			return fmt.Errorf("get database: %w", err)
+		}
+		dbProps, _ := db["properties"].(map[string]interface{})
+
+		// Build ordered list of property names (title first)
+		var propNames []string
+		propTypes := map[string]string{}
+		for name, v := range dbProps {
+			prop, ok := v.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			propType, _ := prop["type"].(string)
+			propTypes[name] = propType
+			if propType == "title" {
+				propNames = append([]string{name}, propNames...)
+			} else {
+				propNames = append(propNames, name)
+			}
+		}
+
+		// Query all rows
+		var allResults []interface{}
+		body := map[string]interface{}{
+			"page_size": 100,
+		}
+		currentCursor := ""
+
+		for {
+			if currentCursor != "" {
+				body["start_cursor"] = currentCursor
+			}
+
+			result, err := c.QueryDatabase(dbID, body)
+			if err != nil {
+				return fmt.Errorf("query database: %w", err)
+			}
+
+			results, _ := result["results"].([]interface{})
+			allResults = append(allResults, results...)
+
+			hasMore, _ := result["has_more"].(bool)
+			if !hasMore {
+				break
+			}
+			nextCursor, _ := result["next_cursor"].(string)
+			currentCursor = nextCursor
+		}
+
+		// Prepare output writer
+		var output *os.File
+		if outputPath != "" {
+			f, err := os.Create(outputPath)
+			if err != nil {
+				return fmt.Errorf("create output file: %w", err)
+			}
+			defer f.Close()
+			output = f
+		} else {
+			output = os.Stdout
+		}
+
+		// Export based on format
+		switch format {
+		case "json":
+			// Build array of objects
+			var rows []map[string]interface{}
+			for _, r := range allResults {
+				page, ok := r.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				pageProps, _ := page["properties"].(map[string]interface{})
+
+				row := map[string]interface{}{}
+				row["id"], _ = page["id"].(string)
+				for _, name := range propNames {
+					if prop, ok := pageProps[name].(map[string]interface{}); ok {
+						row[name] = extractPropertyValue(prop)
+					}
+				}
+				rows = append(rows, row)
+			}
+
+			jsonData, err := json.MarshalIndent(rows, "", "  ")
+			if err != nil {
+				return fmt.Errorf("marshal JSON: %w", err)
+			}
+			fmt.Fprintln(output, string(jsonData))
+
+		case "md", "markdown":
+			// Markdown table
+			// Header row
+			fmt.Fprint(output, "|")
+			for _, name := range propNames {
+				fmt.Fprintf(output, " %s |", name)
+			}
+			fmt.Fprintln(output)
+
+			// Separator row
+			fmt.Fprint(output, "|")
+			for range propNames {
+				fmt.Fprint(output, " --- |")
+			}
+			fmt.Fprintln(output)
+
+			// Data rows
+			for _, r := range allResults {
+				page, ok := r.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				pageProps, _ := page["properties"].(map[string]interface{})
+
+				fmt.Fprint(output, "|")
+				for _, name := range propNames {
+					value := ""
+					if prop, ok := pageProps[name].(map[string]interface{}); ok {
+						value = extractPropertyValue(prop)
+					}
+					// Escape pipes in values
+					value = strings.ReplaceAll(value, "|", "\\|")
+					fmt.Fprintf(output, " %s |", value)
+				}
+				fmt.Fprintln(output)
+			}
+
+		default: // csv
+			// Header row
+			fmt.Fprintln(output, strings.Join(propNames, ","))
+
+			// Data rows
+			for _, r := range allResults {
+				page, ok := r.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				pageProps, _ := page["properties"].(map[string]interface{})
+
+				var values []string
+				for _, name := range propNames {
+					value := ""
+					if prop, ok := pageProps[name].(map[string]interface{}); ok {
+						value = extractPropertyValue(prop)
+					}
+					// Escape CSV special characters
+					if strings.ContainsAny(value, ",\"\n") {
+						value = "\"" + strings.ReplaceAll(value, "\"", "\"\"") + "\""
+					}
+					values = append(values, value)
+				}
+				fmt.Fprintln(output, strings.Join(values, ","))
+			}
+		}
+
+		if outputPath != "" {
+			fmt.Fprintf(os.Stderr, "✓ Exported %d rows to %s\n", len(allResults), outputPath)
+		}
+		return nil
+	},
+}
+
 func init() {
 	dbListCmd.Flags().IntP("limit", "l", 10, "Maximum results")
 	dbListCmd.Flags().String("cursor", "", "Pagination cursor")
@@ -695,6 +893,8 @@ func init() {
 	dbQueryCmd.Flags().String("cursor", "", "Pagination cursor")
 	dbQueryCmd.Flags().Bool("all", false, "Fetch all pages of results")
 	dbAddBulkCmd.Flags().String("file", "", "JSON file with rows to create (required)")
+	dbExportCmd.Flags().String("format", "csv", "Output format: csv, json, md")
+	dbExportCmd.Flags().StringP("output", "o", "", "Output file path (default: stdout)")
 
 	dbCmd.AddCommand(dbListCmd)
 	dbCmd.AddCommand(dbViewCmd)
@@ -704,6 +904,7 @@ func init() {
 	dbCmd.AddCommand(dbAddBulkCmd)
 	dbCmd.AddCommand(dbQueryCmd)
 	dbCmd.AddCommand(dbOpenCmd)
+	dbCmd.AddCommand(dbExportCmd)
 }
 
 // parseFilter parses a filter expression like "Status=Done" into a Notion filter object.

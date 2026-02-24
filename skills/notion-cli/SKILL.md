@@ -1,7 +1,7 @@
 ---
 name: notion-cli
 description: |
-  Work with Notion from the terminal using the `notion` CLI. Use when the user needs to read, create, update, query, or manage Notion pages, databases, blocks, comments, users, or files programmatically. Covers the entire Notion API with 39 commands. Triggers: Notion workspace automation, database queries, page creation, block manipulation, comment threads, file uploads, relation management, or any Notion API interaction from the command line.
+  Work with Notion from the terminal using the `notion` CLI. Use when the user needs to read, create, update, query, or manage Notion pages, databases, blocks, comments, users, or files programmatically. Covers the entire Notion API with 44 commands. Triggers: Notion workspace automation, database queries, page creation, block manipulation, comment threads, file uploads, relation management, database export, multi-workspace management, or any Notion API interaction from the command line.
 ---
 
 # Notion CLI
@@ -28,7 +28,11 @@ npm install -g notion-cli-go
 
 ```bash
 notion auth login --with-token <<< "ntn_xxxxxxxxxxxxx"   # or interactive
+notion auth login --with-token --profile work <<< "ntn_xxx"  # save as named profile
 export NOTION_TOKEN=ntn_xxxxxxxxxxxxx                     # env var alternative
+notion auth status                                        # show current profile
+notion auth switch                                        # interactive profile picker
+notion auth switch work                                   # switch to named profile
 notion auth doctor                                        # health check
 ```
 
@@ -51,6 +55,8 @@ notion page delete <id>                  # archive page
 notion page restore <id>                 # unarchive page
 notion page move <id> --to <parent>
 notion page open <id>                    # open in browser
+notion page edit <id|url>                # edit in $EDITOR (Markdown round-trip)
+notion page edit <id> --editor nano      # specify editor
 notion page set <id> Key=Value ...       # set properties (type-aware)
 notion page props <id>                   # show all properties
 notion page props <id> <prop-id>         # get specific property
@@ -70,6 +76,9 @@ notion db create <parent> --title "X" --props "Status:select,Date:date"
 notion db update <id> --title "New Name" --add-prop "Priority:select"
 notion db add <id> "Name=Task" "Status=Todo" "Priority=High"
 notion db add-bulk <id> --file items.json              # bulk create from JSON
+notion db export <id>                    # export all rows as CSV (default)
+notion db export <id> --format json      # export as JSON
+notion db export <id> --format md -o report.md  # export as Markdown table to file
 notion db open <id>                      # open in browser
 ```
 
@@ -105,6 +114,9 @@ notion block append <parent> --file notes.md           # from file
 notion block insert <parent> "text" --after <block-id> # positional insert
 notion block update <id> --text "new"    # update content
 notion block delete <id1> [id2] [id3]    # delete one or more
+notion block move <id> --after <target>  # reposition after target block
+notion block move <id> --before <target> # reposition before target block
+notion block move <id> --parent <new-parent>  # move to different parent
 ```
 
 Block types: `paragraph`/`p`, `h1`, `h2`, `h3`, `bullet`, `numbered`, `todo`, `quote`, `code`, `callout`, `divider`
@@ -114,6 +126,7 @@ Block types: `paragraph`/`p`, `h1`, `h2`, `h3`, `bullet`, `numbered`, `todo`, `q
 notion comment list <page-id>
 notion comment add <page-id> "comment text"
 notion comment get <comment-id>
+notion comment reply <comment-id> "reply text"  # reply in same thread
 ```
 
 ### Users

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/4ier/notion-cli/internal/client"
@@ -20,9 +21,22 @@ var authCmd = &cobra.Command{
 var authLoginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Log in to Notion",
-	Long:  `Authenticate with Notion using an integration token.`,
+	Long: `Authenticate with Notion using an integration token.
+
+Use --profile to save credentials under a named profile for multi-workspace support.
+
+Examples:
+  notion auth login
+  notion auth login --with-token
+  notion auth login --profile work
+  echo "secret_xxx" | notion auth login --with-token --profile personal`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		withToken, _ := cmd.Flags().GetBool("with-token")
+		profileName, _ := cmd.Flags().GetString("profile")
+
+		if profileName == "" {
+			profileName = "default"
+		}
 
 		var token string
 		if withToken {
@@ -57,18 +71,34 @@ var authLoginCmd = &cobra.Command{
 		workspaceID, _ := botInfo["workspace_id"].(string)
 		botID, _ := me["id"].(string)
 
-		// Save config
-		cfg := &config.Config{
+		// Load existing config or create new
+		cfg, _ := config.Load()
+		if cfg == nil {
+			cfg = &config.Config{}
+		}
+
+		// Migrate legacy config if needed
+		cfg.MigrateToProfiles()
+
+		// Set the profile
+		cfg.SetProfile(profileName, &config.Profile{
 			Token:         token,
 			WorkspaceName: workspaceName,
 			WorkspaceID:   workspaceID,
 			BotID:         botID,
-		}
+		})
+
+		// Set as current profile
+		cfg.CurrentProfile = profileName
+
 		if err := config.Save(cfg); err != nil {
 			return fmt.Errorf("save config: %w", err)
 		}
 
 		render.Title("✓", fmt.Sprintf("Logged in to %s", workspaceName))
+		if profileName != "default" {
+			render.Field("Profile", profileName)
+		}
 		return nil
 	},
 }
@@ -76,14 +106,24 @@ var authLoginCmd = &cobra.Command{
 var authStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show authentication status",
+	Long: `Show current authentication status and profile information.
+
+Examples:
+  notion auth status`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		token, err := getToken()
+		cfg, err := config.Load()
 		if err != nil {
 			fmt.Println("✗ Not authenticated")
 			return nil
 		}
 
-		c := client.New(token)
+		profile := cfg.GetCurrentProfile()
+		if profile == nil || profile.Token == "" {
+			fmt.Println("✗ Not authenticated")
+			return nil
+		}
+
+		c := client.New(profile.Token)
 		me, err := c.GetMe()
 		if err != nil {
 			return fmt.Errorf("token is invalid: %w", err)
@@ -94,21 +134,197 @@ var authStatusCmd = &cobra.Command{
 		name, _ := me["name"].(string)
 
 		render.Title("✓", "Authenticated")
+
+		// Show current profile name
+		profileName := cfg.CurrentProfile
+		if profileName == "" {
+			profileName = "default"
+		}
+		profiles := cfg.ListProfiles()
+		if len(profiles) > 1 {
+			render.Field("Profile", profileName)
+		}
+
 		render.Field("Workspace", workspaceName)
 		render.Field("Bot", name)
+
+		// Show other available profiles
+		if len(profiles) > 1 {
+			var others []string
+			for _, p := range profiles {
+				if p != profileName {
+					others = append(others, p)
+				}
+			}
+			if len(others) > 0 {
+				render.Field("Other profiles", strings.Join(others, ", "))
+			}
+		}
 		return nil
 	},
 }
 
 var authLogoutCmd = &cobra.Command{
-	Use:   "logout",
+	Use:   "logout [profile]",
 	Short: "Log out of Notion",
+	Long: `Log out of Notion. Optionally specify a profile to remove.
+
+Without arguments, clears all profiles. With a profile name, removes only that profile.
+
+Examples:
+  notion auth logout
+  notion auth logout work`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := &config.Config{}
+		if len(args) == 0 {
+			// Clear all profiles
+			cfg := &config.Config{}
+			if err := config.Save(cfg); err != nil {
+				return err
+			}
+			fmt.Println("✓ Logged out (all profiles)")
+			return nil
+		}
+
+		// Remove specific profile
+		profileName := args[0]
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+
+		if cfg.Profiles == nil {
+			return fmt.Errorf("profile %q not found", profileName)
+		}
+
+		if _, ok := cfg.Profiles[profileName]; !ok {
+			return fmt.Errorf("profile %q not found", profileName)
+		}
+
+		delete(cfg.Profiles, profileName)
+
+		// If we removed the current profile, switch to another
+		if cfg.CurrentProfile == profileName {
+			profiles := cfg.ListProfiles()
+			if len(profiles) > 0 {
+				cfg.CurrentProfile = profiles[0]
+			} else {
+				cfg.CurrentProfile = ""
+			}
+		}
+
 		if err := config.Save(cfg); err != nil {
 			return err
 		}
-		fmt.Println("✓ Logged out")
+
+		fmt.Printf("✓ Logged out from profile %q\n", profileName)
+		return nil
+	},
+}
+
+var authSwitchCmd = &cobra.Command{
+	Use:   "switch [profile]",
+	Short: "Switch between workspace profiles",
+	Long: `Switch between saved workspace profiles.
+
+Without arguments, shows an interactive list of profiles to choose from.
+With a profile name, switches directly to that profile.
+
+Examples:
+  notion auth switch
+  notion auth switch work
+  notion auth switch personal`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("not authenticated. Run 'notion auth login' first")
+		}
+
+		// Migrate legacy config if needed
+		cfg.MigrateToProfiles()
+
+		profiles := cfg.ListProfiles()
+		if len(profiles) == 0 {
+			return fmt.Errorf("no profiles found. Run 'notion auth login' first")
+		}
+
+		var targetProfile string
+
+		if len(args) == 1 {
+			// Direct switch
+			targetProfile = args[0]
+			if _, ok := cfg.Profiles[targetProfile]; !ok {
+				return fmt.Errorf("profile %q not found. Available: %s", targetProfile, strings.Join(profiles, ", "))
+			}
+		} else {
+			// Interactive selection
+			if len(profiles) == 1 {
+				fmt.Println("Only one profile available.")
+				return nil
+			}
+
+			fmt.Println("Available profiles:")
+			fmt.Println()
+			for i, name := range profiles {
+				profile := cfg.Profiles[name]
+				marker := "  "
+				if name == cfg.CurrentProfile {
+					marker = "→ "
+				}
+				workspace := profile.WorkspaceName
+				if workspace == "" {
+					workspace = "(unknown workspace)"
+				}
+				fmt.Printf("%s%d. %s (%s)\n", marker, i+1, name, workspace)
+			}
+			fmt.Println()
+			fmt.Print("Select profile (number or name): ")
+
+			scanner := bufio.NewScanner(os.Stdin)
+			if !scanner.Scan() {
+				return nil
+			}
+			input := strings.TrimSpace(scanner.Text())
+
+			if input == "" {
+				return nil
+			}
+
+			// Try as number first
+			if num, err := strconv.Atoi(input); err == nil {
+				if num >= 1 && num <= len(profiles) {
+					targetProfile = profiles[num-1]
+				} else {
+					return fmt.Errorf("invalid selection: %d", num)
+				}
+			} else {
+				// Try as profile name
+				targetProfile = input
+				if _, ok := cfg.Profiles[targetProfile]; !ok {
+					return fmt.Errorf("profile %q not found", targetProfile)
+				}
+			}
+		}
+
+		if targetProfile == cfg.CurrentProfile {
+			fmt.Printf("Already using profile %q\n", targetProfile)
+			return nil
+		}
+
+		cfg.CurrentProfile = targetProfile
+		if err := config.Save(cfg); err != nil {
+			return fmt.Errorf("save config: %w", err)
+		}
+
+		profile := cfg.Profiles[targetProfile]
+		workspace := profile.WorkspaceName
+		if workspace == "" {
+			workspace = "(unknown)"
+		}
+
+		render.Title("✓", fmt.Sprintf("Switched to profile %q", targetProfile))
+		render.Field("Workspace", workspace)
 		return nil
 	},
 }
@@ -170,8 +386,11 @@ Examples:
 
 func init() {
 	authLoginCmd.Flags().Bool("with-token", false, "Read token from standard input")
+	authLoginCmd.Flags().StringP("profile", "p", "", "Profile name to save credentials under (default: \"default\")")
+
 	authCmd.AddCommand(authLoginCmd)
 	authCmd.AddCommand(authStatusCmd)
 	authCmd.AddCommand(authLogoutCmd)
 	authCmd.AddCommand(authDoctorCmd)
+	authCmd.AddCommand(authSwitchCmd)
 }
