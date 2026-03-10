@@ -1093,8 +1093,13 @@ func buildPropertyValue(propType, value string) interface{} {
 			"status": map[string]interface{}{"name": value},
 		}
 	case "date":
+		parts := strings.SplitN(value, "/", 2)
+		d := map[string]interface{}{"start": parts[0]}
+		if len(parts) == 2 {
+			d["end"] = parts[1]
+		}
 		return map[string]interface{}{
-			"date": map[string]interface{}{"start": value},
+			"date": d,
 		}
 	case "checkbox":
 		return map[string]interface{}{

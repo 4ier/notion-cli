@@ -83,6 +83,30 @@ func TestBuildPropertyValueMultiSelect(t *testing.T) {
 	}
 }
 
+func TestBuildPropertyValueDateRange(t *testing.T) {
+	// Single date (backward compatible)
+	result := buildPropertyValue("date", "2026-03-07")
+	m := result.(map[string]interface{})
+	d := m["date"].(map[string]interface{})
+	if d["start"] != "2026-03-07" {
+		t.Errorf("start = %q, want 2026-03-07", d["start"])
+	}
+	if _, hasEnd := d["end"]; hasEnd {
+		t.Error("single date should not have end key")
+	}
+
+	// Date range with /
+	result2 := buildPropertyValue("date", "2026-03-07T20:00:00+01:00/2026-03-07T21:00:00+01:00")
+	m2 := result2.(map[string]interface{})
+	d2 := m2["date"].(map[string]interface{})
+	if d2["start"] != "2026-03-07T20:00:00+01:00" {
+		t.Errorf("start = %q, want 2026-03-07T20:00:00+01:00", d2["start"])
+	}
+	if d2["end"] != "2026-03-07T21:00:00+01:00" {
+		t.Errorf("end = %q, want 2026-03-07T21:00:00+01:00", d2["end"])
+	}
+}
+
 func TestBuildPropertyValueTitle(t *testing.T) {
 	result := buildPropertyValue("title", "My Title")
 	m := result.(map[string]interface{})
