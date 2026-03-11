@@ -115,3 +115,44 @@ func TestUploadFileContentSetsMultipartPartContentType(t *testing.T) {
 		t.Fatalf("response = %q", string(data))
 	}
 }
+
+func TestUploadFileContentEscapesQuotedFilename(t *testing.T) {
+	var gotFileName string
+
+	c := &Client{
+		token: "test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				mediaType, params, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
+				if err != nil {
+					t.Fatalf("parse Content-Type: %v", err)
+				}
+				if mediaType != "multipart/form-data" {
+					t.Fatalf("Content-Type = %q, want multipart/form-data", mediaType)
+				}
+
+				reader := multipart.NewReader(req.Body, params["boundary"])
+				part, err := reader.NextPart()
+				if err != nil {
+					t.Fatalf("read multipart part: %v", err)
+				}
+
+				gotFileName = part.FileName()
+
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`{"id":"upload-123","status":"uploaded"}`)),
+					Header:     make(http.Header),
+				}, nil
+			}),
+		},
+	}
+
+	if _, err := c.UploadFileContent("upload-123", `report "final".pdf`, "application/pdf", []byte("pdf-bytes")); err != nil {
+		t.Fatalf("UploadFileContent returned error: %v", err)
+	}
+
+	if gotFileName != `report "final".pdf` {
+		t.Fatalf("filename = %q, want %q", gotFileName, `report "final".pdf`)
+	}
+}

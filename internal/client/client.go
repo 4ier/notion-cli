@@ -293,7 +293,7 @@ func (c *Client) UploadFileContent(uploadID, fileName, contentType string, fileB
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	partHeader := make(textproto.MIMEHeader)
-	partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, fileName))
+	partHeader.Set("Content-Disposition", multipart.FileContentDisposition("file", fileName))
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
