@@ -57,7 +57,7 @@ Download from [GitHub Releases](https://github.com/4ier/notion-cli/releases) —
 
 ```sh
 # Authenticate
-notion auth login --token ntn_xxxxx
+echo "ntn_xxxxx" | notion auth login --with-token
 
 # Search your workspace
 notion search "meeting notes"
@@ -82,7 +82,7 @@ notion api GET /v1/users/me
 
 | Group | Commands | Description |
 |-------|----------|-------------|
-| **auth** | `login` `logout` `status` `doctor` | Authentication & diagnostics |
+| **auth** | `login` `logout` `status` `switch` `doctor` | Authentication & diagnostics |
 | **search** | `search` | Search pages and databases |
 | **page** | `view` `list` `create` `delete` `restore` `move` `open` `set` `props` `link` `unlink` | Full page lifecycle |
 | **db** | `list` `view` `query` `create` `update` `add` `add-bulk` `open` | Database CRUD + query |
@@ -170,7 +170,7 @@ npx skills add 4ier/notion-cli
 
 ```sh
 # Token is stored in ~/.config/notion-cli/config.json (mode 0600)
-notion auth login --token ntn_xxxxx
+echo "ntn_xxxxx" | notion auth login --with-token
 
 # Or use environment variable
 export NOTION_TOKEN=ntn_xxxxx

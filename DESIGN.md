@@ -17,7 +17,7 @@
 
 ```
 notion auth login              # Interactive: open browser → OAuth flow
-notion auth login --token      # Paste an integration token directly
+notion auth login --with-token  # Read an integration token from stdin
 notion auth logout
 notion auth status             # Show current auth state
 notion auth switch             # Switch between multiple workspaces
@@ -145,7 +145,6 @@ Like `gh api` — for anything the CLI doesn't cover yet.
 ```
 --format json|table|text|md    # Output format (default: auto-detect tty)
 --workspace <name>             # Use specific workspace
---token <token>                # Override auth token
 --no-cache                     # Skip local cache
 --debug                        # Show HTTP requests/responses
 --quiet                        # Minimal output
@@ -180,7 +179,7 @@ Last edited: 2 hours ago by @alice
 ## MVP Scope (v0.1.0)
 
 ### Must have:
-1. `notion auth login --token` + `NOTION_TOKEN` env var
+1. `notion auth login --with-token` + `NOTION_TOKEN` env var
 2. `notion search`
 3. `notion page view` + `notion page list`
 4. `notion page create` (simple: title + optional text body)
