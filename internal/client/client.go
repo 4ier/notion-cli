@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -285,24 +286,32 @@ func (c *Client) AddComment(pageID, text string) ([]byte, error) {
 }
 
 // UploadFileContent sends file content to an existing file upload via multipart form.
-func (c *Client) UploadFileContent(uploadID, fileName, contentType string, fileBytes []byte) error {
+func (c *Client) UploadFileContent(uploadID, fileName, contentType string, fileBytes []byte) ([]byte, error) {
 	url := BaseURL + fmt.Sprintf("/v1/file_uploads/%s/send", uploadID)
 
 	// Build multipart form
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", fileName)
+	partHeader := make(textproto.MIMEHeader)
+	partHeader.Set("Content-Disposition", multipart.FileContentDisposition("file", fileName))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	partHeader.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(partHeader)
 	if err != nil {
-		return fmt.Errorf("create form file: %w", err)
+		return nil, fmt.Errorf("create form file: %w", err)
 	}
 	if _, err := part.Write(fileBytes); err != nil {
-		return fmt.Errorf("write file data: %w", err)
+		return nil, fmt.Errorf("write file data: %w", err)
 	}
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("finalize multipart body: %w", err)
+	}
 
 	req, err := http.NewRequest("POST", url, body)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.token)
@@ -315,16 +324,24 @@ func (c *Client) UploadFileContent(uploadID, fileName, contentType string, fileB
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("upload request failed: %w", err)
+		return nil, fmt.Errorf("upload request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("upload failed (%d): %s", resp.StatusCode, string(respBody))
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
 	}
 
-	return nil
+	if c.debug {
+		fmt.Printf("← %d %s (%d bytes)\n", resp.StatusCode, resp.Status, len(respBody))
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("upload failed (%d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
 }
 
 // errorHint provides actionable suggestions for common API errors.
