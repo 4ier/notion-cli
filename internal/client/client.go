@@ -16,6 +16,7 @@ const (
 	BaseURL        = "https://api.notion.com"
 	NotionVersion  = "2022-06-28"
 	DefaultTimeout = 30 * time.Second
+	UploadTimeout  = 5 * time.Minute
 )
 
 type Client struct {
@@ -322,7 +323,10 @@ func (c *Client) UploadFileContent(uploadID, fileName, contentType string, fileB
 		fmt.Printf("→ POST %s (multipart, %d bytes)\n", url, body.Len())
 	}
 
+	origTimeout := c.httpClient.Timeout
+	c.httpClient.Timeout = UploadTimeout
 	resp, err := c.httpClient.Do(req)
+	c.httpClient.Timeout = origTimeout
 	if err != nil {
 		return nil, fmt.Errorf("upload request failed: %w", err)
 	}
