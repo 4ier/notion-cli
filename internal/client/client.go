@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -323,10 +324,9 @@ func (c *Client) UploadFileContent(uploadID, fileName, contentType string, fileB
 		fmt.Printf("→ POST %s (multipart, %d bytes)\n", url, body.Len())
 	}
 
-	origTimeout := c.httpClient.Timeout
-	c.httpClient.Timeout = UploadTimeout
-	resp, err := c.httpClient.Do(req)
-	c.httpClient.Timeout = origTimeout
+	ctx, cancel := context.WithTimeout(context.Background(), UploadTimeout)
+	defer cancel()
+	resp, err := c.httpClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("upload request failed: %w", err)
 	}
