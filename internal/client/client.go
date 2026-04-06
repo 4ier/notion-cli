@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"os"
 	"strings"
 	"time"
 )
@@ -22,17 +23,30 @@ const (
 
 type Client struct {
 	token      string
+	baseURL    string
 	httpClient *http.Client
 	debug      bool
 }
 
 func New(token string) *Client {
+	base := BaseURL
+	if envBase := os.Getenv("NOTION_BASE_URL"); envBase != "" {
+		base = envBase
+	}
 	return &Client{
-		token: token,
+		token:   token,
+		baseURL: base,
 		httpClient: &http.Client{
 			Timeout: DefaultTimeout,
 		},
 	}
+}
+
+// NewWithBaseURL creates a client pointing at a custom API base (for testing).
+func NewWithBaseURL(token, baseURL string) *Client {
+	c := New(token)
+	c.baseURL = baseURL
+	return c
 }
 
 func (c *Client) SetDebug(debug bool) {
@@ -40,7 +54,7 @@ func (c *Client) SetDebug(debug bool) {
 }
 
 func (c *Client) do(method, path string, body interface{}) ([]byte, error) {
-	url := BaseURL + path
+	url := c.baseURL + path
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -289,7 +303,7 @@ func (c *Client) AddComment(pageID, text string) ([]byte, error) {
 
 // UploadFileContent sends file content to an existing file upload via multipart form.
 func (c *Client) UploadFileContent(uploadID, fileName, contentType string, fileBytes []byte) ([]byte, error) {
-	url := BaseURL + fmt.Sprintf("/v1/file_uploads/%s/send", uploadID)
+	url := c.baseURL + fmt.Sprintf("/v1/file_uploads/%s/send", uploadID)
 
 	// Build multipart form
 	body := &bytes.Buffer{}
