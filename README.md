@@ -35,7 +35,7 @@ go install github.com/4ier/notion-cli@latest
 
 ### npm
 ```sh
-npm install -g notion-cli-go
+npm install -g @4ier/notion-cli
 ```
 
 ### Scoop (Windows)
