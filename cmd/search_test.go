@@ -186,10 +186,10 @@ func runSearch(t *testing.T, args ...string) (string, error) {
 	outputFormat = ""
 	debugMode = false
 	// Reset search command local flags to defaults
-	searchCmd.Flags().Set("type", "")
-	searchCmd.Flags().Set("limit", "10")
-	searchCmd.Flags().Set("cursor", "")
-	searchCmd.Flags().Set("all", "false")
+	_ = searchCmd.Flags().Set("type", "")
+	_ = searchCmd.Flags().Set("limit", "10")
+	_ = searchCmd.Flags().Set("cursor", "")
+	_ = searchCmd.Flags().Set("all", "false")
 	var cobraOut string
 	var err error
 	captured := captureStdout(t, func() {
