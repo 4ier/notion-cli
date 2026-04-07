@@ -1,0 +1,15 @@
+#!/bin/sh
+# Wrapper script for notion-cli installed via npm postinstall
+# Resolve symlinks so this works when called via npm's global bin symlink
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do
+  DIR=$(cd "$(dirname "$SOURCE")" && pwd)
+  SOURCE=$(readlink "$SOURCE")
+  # If SOURCE is relative, resolve against DIR
+  case "$SOURCE" in
+    /*) ;;
+    *) SOURCE="$DIR/$SOURCE" ;;
+  esac
+done
+basedir=$(cd "$(dirname "$SOURCE")" && pwd)
+exec "$basedir/notion-bin" "$@"

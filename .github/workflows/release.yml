@@ -45,3 +45,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish to npm
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          cd npm
+          # Sync version from git tag
+          node -e "const p=require('./package.json'); p.version='${VERSION}'; require('fs').writeFileSync('package.json', JSON.stringify(p,null,2)+'\n')"
+          # Copy LICENSE and README from repo root
+          cp ../LICENSE . 2>/dev/null || true
+          cp ../README.md . 2>/dev/null || true
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

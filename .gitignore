@@ -1,6 +1,8 @@
 # Binary
 notion
 notion.exe
+!npm/bin/notion
+!npm/bin/notion.cmd
 
 # OS
 .DS_Store
