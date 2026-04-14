@@ -103,10 +103,12 @@ Examples:
 var commentAddCmd = &cobra.Command{
 	Use:   "add <page-id|url> <text>",
 	Short: "Add a comment to a page",
-	Long: `Add a comment to a Notion page.
+	Long: `Add a comment to a Notion page, optionally mentioning users.
 
 Examples:
-  notion comment add abc123 "This looks great!"`,
+  notion comment add abc123 "This looks great!"
+  notion comment add abc123 --mention-user <user-id> "Please review this"
+  notion comment add abc123 --mention-user <id1> --mention-user <id2> "Please take a look"`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := getToken()
@@ -116,11 +118,32 @@ Examples:
 
 		pageID := util.ResolveID(args[0])
 		text := args[1]
+		mentionUsers, _ := cmd.Flags().GetStringSlice("mention-user")
+
+		// Build rich_text: mentions first, then text
+		var richText []map[string]interface{}
+		for _, userID := range mentionUsers {
+			richText = append(richText, map[string]interface{}{
+				"type": "mention",
+				"mention": map[string]interface{}{
+					"type": "user",
+					"user": map[string]interface{}{"id": userID},
+				},
+			})
+			richText = append(richText, map[string]interface{}{
+				"type": "text",
+				"text": map[string]interface{}{"content": " "},
+			})
+		}
+		richText = append(richText, map[string]interface{}{
+			"type": "text",
+			"text": map[string]interface{}{"content": text},
+		})
 
 		c := client.New(token)
 		c.SetDebug(debugMode)
 
-		data, err := c.AddComment(pageID, text)
+		data, err := c.AddComment(pageID, richText)
 		if err != nil {
 			return fmt.Errorf("add comment: %w", err)
 		}
@@ -277,6 +300,8 @@ func init() {
 	commentListCmd.Flags().Bool("all", false, "Fetch all pages of results")
 
 	commentCmd.AddCommand(commentListCmd)
+	commentAddCmd.Flags().StringSlice("mention-user", nil, "Mention a user by ID (repeatable)")
+
 	commentCmd.AddCommand(commentAddCmd)
 	commentCmd.AddCommand(commentGetCmd)
 	commentCmd.AddCommand(commentReplyCmd)

@@ -289,14 +289,12 @@ func (c *Client) ListComments(blockID string, pageSize int, startCursor string) 
 }
 
 // AddComment adds a comment to a page.
-func (c *Client) AddComment(pageID, text string) ([]byte, error) {
+func (c *Client) AddComment(pageID string, richText []map[string]interface{}) ([]byte, error) {
 	body := map[string]interface{}{
 		"parent": map[string]interface{}{
 			"page_id": pageID,
 		},
-		"rich_text": []map[string]interface{}{
-			{"text": map[string]interface{}{"content": text}},
-		},
+		"rich_text": richText,
 	}
 	return c.Post("/v1/comments", body)
 }
