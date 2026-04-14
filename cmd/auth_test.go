@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/4ier/notion-cli/internal/config"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // setupAuthTest creates a mock Notion API server and sets env vars for isolated testing.
@@ -71,12 +73,36 @@ func executeCommand(args ...string) (string, string, error) {
 	stderr := new(bytes.Buffer)
 
 	cmd := rootCmd
+	resetCommandFlags(cmd)
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	cmd.SetArgs(args)
 
 	err := cmd.Execute()
 	return stdout.String(), stderr.String(), err
+}
+
+func resetCommandFlags(cmd interface{ Flags() *pflag.FlagSet; PersistentFlags() *pflag.FlagSet; Commands() []*cobra.Command }) {
+	resetFlagSet(cmd.Flags())
+	resetFlagSet(cmd.PersistentFlags())
+	for _, sub := range cmd.Commands() {
+		resetCommandFlags(sub)
+	}
+}
+
+func resetFlagSet(fs *pflag.FlagSet) {
+	if fs == nil {
+		return
+	}
+
+	fs.VisitAll(func(f *pflag.Flag) {
+		if sliceValue, ok := f.Value.(pflag.SliceValue); ok {
+			_ = sliceValue.Replace(nil)
+		} else {
+			_ = f.Value.Set(f.DefValue)
+		}
+		f.Changed = false
+	})
 }
 
 // --- auth login ---

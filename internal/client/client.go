@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/4ier/notion-cli/internal/util"
 )
 
 const (
@@ -289,16 +291,48 @@ func (c *Client) ListComments(blockID string, pageSize int, startCursor string) 
 }
 
 // AddComment adds a comment to a page.
-func (c *Client) AddComment(pageID, text string) ([]byte, error) {
+func (c *Client) AddComment(pageID, text string, mentionUserIDs []string) ([]byte, error) {
 	body := map[string]interface{}{
 		"parent": map[string]interface{}{
-			"page_id": pageID,
+			"page_id": util.ResolveID(pageID),
 		},
-		"rich_text": []map[string]interface{}{
-			{"text": map[string]interface{}{"content": text}},
-		},
+		"rich_text": buildCommentRichText(text, mentionUserIDs),
 	}
 	return c.Post("/v1/comments", body)
+}
+
+func buildCommentRichText(text string, mentionUserIDs []string) []map[string]interface{} {
+	var richText []map[string]interface{}
+
+	for i, userID := range mentionUserIDs {
+		richText = append(richText, map[string]interface{}{
+			"type": "mention",
+			"mention": map[string]interface{}{
+				"type": "user",
+				"user": map[string]interface{}{
+					"id": userID,
+				},
+			},
+		})
+		if i < len(mentionUserIDs)-1 || text != "" {
+			richText = append(richText, commentTextRichText(" "))
+		}
+	}
+
+	if text != "" {
+		richText = append(richText, commentTextRichText(text))
+	}
+
+	return richText
+}
+
+func commentTextRichText(text string) map[string]interface{} {
+	return map[string]interface{}{
+		"type": "text",
+		"text": map[string]interface{}{
+			"content": text,
+		},
+	}
 }
 
 // UploadFileContent sends file content to an existing file upload via multipart form.

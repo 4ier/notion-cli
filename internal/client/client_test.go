@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -154,5 +155,91 @@ func TestUploadFileContentEscapesQuotedFilename(t *testing.T) {
 
 	if gotFileName != `report "final".pdf` {
 		t.Fatalf("filename = %q, want %q", gotFileName, `report "final".pdf`)
+	}
+}
+
+func TestAddCommentIncludesMentionRichText(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]interface{}
+
+	c := &Client{
+		token: "test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				gotPath = req.URL.Path
+				if err := json.NewDecoder(req.Body).Decode(&gotBody); err != nil {
+					t.Fatalf("decode request body: %v", err)
+				}
+
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`{"id":"comment-123"}`)),
+					Header:     make(http.Header),
+				}, nil
+			}),
+		},
+	}
+
+	if _, err := c.AddComment(
+		"page-123",
+		"Please review this",
+		[]string{"user-123", "user-456"},
+	); err != nil {
+		t.Fatalf("AddComment returned error: %v", err)
+	}
+
+	if gotPath != "/v1/comments" {
+		t.Fatalf("path = %q, want %q", gotPath, "/v1/comments")
+	}
+
+	parent, ok := gotBody["parent"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("parent = %T, want map[string]interface{}", gotBody["parent"])
+	}
+	if parent["page_id"] != "page-123" {
+		t.Fatalf("page_id = %v, want %q", parent["page_id"], "page-123")
+	}
+
+	richText, ok := gotBody["rich_text"].([]interface{})
+	if !ok {
+		t.Fatalf("rich_text = %T, want []interface{}", gotBody["rich_text"])
+	}
+	if len(richText) != 5 {
+		t.Fatalf("len(rich_text) = %d, want 5", len(richText))
+	}
+
+	first, ok := richText[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("rich_text[0] = %T, want map[string]interface{}", richText[0])
+	}
+	if first["type"] != "mention" {
+		t.Fatalf("rich_text[0].type = %v, want %q", first["type"], "mention")
+	}
+
+	mention, ok := first["mention"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("rich_text[0].mention = %T, want map[string]interface{}", first["mention"])
+	}
+	user, ok := mention["user"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("rich_text[0].mention.user = %T, want map[string]interface{}", mention["user"])
+	}
+	if user["id"] != "user-123" {
+		t.Fatalf("rich_text[0].mention.user.id = %v, want %q", user["id"], "user-123")
+	}
+
+	last, ok := richText[4].(map[string]interface{})
+	if !ok {
+		t.Fatalf("rich_text[4] = %T, want map[string]interface{}", richText[4])
+	}
+	if last["type"] != "text" {
+		t.Fatalf("rich_text[4].type = %v, want %q", last["type"], "text")
+	}
+	text, ok := last["text"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("rich_text[4].text = %T, want map[string]interface{}", last["text"])
+	}
+	if text["content"] != "Please review this" {
+		t.Fatalf("rich_text[4].text.content = %v, want %q", text["content"], "Please review this")
 	}
 }
