@@ -26,14 +26,14 @@ func ResolveID(input string) string {
 		}
 	}
 
-	// Already a UUID with dashes
-	if uuidRe.MatchString(input) {
-		return input
-	}
-
 	// 32-char hex (no dashes)
 	if plainIDRe.MatchString(input) {
 		return formatUUID(input)
+	}
+
+	// Already a UUID with dashes
+	if uuidRe.MatchString(input) {
+		return input
 	}
 
 	// Return as-is (let the API handle the error)

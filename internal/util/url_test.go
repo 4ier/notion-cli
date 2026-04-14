@@ -16,7 +16,7 @@ func TestResolveID(t *testing.T) {
 		{
 			name:  "UUID without dashes (32 hex chars)",
 			input: "c9e9f681ec8e4eb7be25bbbe479b05b0",
-			want:  "c9e9f681ec8e4eb7be25bbbe479b05b0",
+			want:  "c9e9f681-ec8e-4eb7-be25-bbbe479b05b0",
 		},
 		{
 			name:  "notion.so URL with page name",

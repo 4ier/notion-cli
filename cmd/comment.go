@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/4ier/notion-cli/internal/client"
 	"github.com/4ier/notion-cli/internal/render"
@@ -101,26 +102,31 @@ Examples:
 }
 
 var commentAddCmd = &cobra.Command{
-	Use:   "add <page-id|url> <text>",
+	Use:   "add <page-id|url> [text]",
 	Short: "Add a comment to a page",
 	Long: `Add a comment to a Notion page.
 
 Examples:
-  notion comment add abc123 "This looks great!"`,
-	Args: cobra.ExactArgs(2),
+  notion comment add abc123 "This looks great!"
+  notion comment add abc123 --mention-user user-123 --text "Please review this"
+  notion comment add abc123 --mention-user user-123 --mention-user user-456 --text "Please review this"`,
+	Args: validateCommentAddArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		pageID := util.ResolveID(args[0])
+		text, mentionUserIDs, err := resolveCommentAddContent(cmd, args)
+		if err != nil {
+			return err
+		}
+
 		token, err := getToken()
 		if err != nil {
 			return err
 		}
 
-		pageID := util.ResolveID(args[0])
-		text := args[1]
-
 		c := client.New(token)
 		c.SetDebug(debugMode)
 
-		data, err := c.AddComment(pageID, text)
+		data, err := c.AddComment(pageID, text, mentionUserIDs)
 		if err != nil {
 			return fmt.Errorf("add comment: %w", err)
 		}
@@ -128,21 +134,55 @@ Examples:
 		if outputFormat == "json" {
 			var result map[string]interface{}
 			if err := json.Unmarshal(data, &result); err != nil {
-		return fmt.Errorf("parse response: %w", err)
-	}
+				return fmt.Errorf("parse response: %w", err)
+			}
 			return render.JSON(result)
 		}
 
 		var result map[string]interface{}
 		if err := json.Unmarshal(data, &result); err != nil {
-		return fmt.Errorf("parse response: %w", err)
-	}
+			return fmt.Errorf("parse response: %w", err)
+		}
 		id, _ := result["id"].(string)
 
-		render.Title("✓", "Comment added")
-		render.Field("ID", id)
+		fmt.Fprintf(cmd.OutOrStdout(), "✓ Comment added\n")
+		fmt.Fprintf(cmd.OutOrStdout(), "ID:             %s\n", id)
 		return nil
 	},
+}
+
+func validateCommentAddArgs(cmd *cobra.Command, args []string) error {
+	if len(args) < 1 || len(args) > 2 {
+		return cobra.RangeArgs(1, 2)(cmd, args)
+	}
+
+	_, _, err := resolveCommentAddContent(cmd, args)
+	return err
+}
+
+func resolveCommentAddContent(cmd *cobra.Command, args []string) (string, []string, error) {
+	flagText, _ := cmd.Flags().GetString("text")
+	mentionUserIDs, _ := cmd.Flags().GetStringArray("mention-user")
+
+	if len(args) == 2 && flagText != "" {
+		return "", nil, fmt.Errorf("provide comment text either as an argument or with --text, not both")
+	}
+
+	text := flagText
+	if len(args) == 2 {
+		text = args[1]
+	}
+
+	if strings.TrimSpace(text) == "" && len(mentionUserIDs) == 0 {
+		return "", nil, fmt.Errorf("comment content required: provide text or at least one --mention-user")
+	}
+
+	resolvedMentionUserIDs := make([]string, len(mentionUserIDs))
+	for i, userID := range mentionUserIDs {
+		resolvedMentionUserIDs[i] = util.ResolveID(userID)
+	}
+
+	return text, resolvedMentionUserIDs, nil
 }
 
 var commentGetCmd = &cobra.Command{
@@ -275,6 +315,8 @@ Examples:
 func init() {
 	commentListCmd.Flags().String("cursor", "", "Pagination cursor")
 	commentListCmd.Flags().Bool("all", false, "Fetch all pages of results")
+	commentAddCmd.Flags().String("text", "", "Comment text")
+	commentAddCmd.Flags().StringArray("mention-user", nil, "Mention a Notion user by ID (repeatable)")
 
 	commentCmd.AddCommand(commentListCmd)
 	commentCmd.AddCommand(commentAddCmd)
