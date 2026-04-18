@@ -18,6 +18,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Pre-flight — verify required secrets
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          missing=0
+          check() {
+            if [ -z "$2" ]; then
+              echo "::error::Required secret $1 is empty or not set"
+              missing=1
+            else
+              echo "✓ $1 present (${#2} chars)"
+            fi
+          }
+          check HOMEBREW_TAP_TOKEN "$HOMEBREW_TAP_TOKEN"
+          check NPM_TOKEN "$NPM_TOKEN"
+          if [ $missing -eq 1 ]; then
+            echo "::error::Aborting release — fix secrets in repo settings before retrying."
+            exit 1
+          fi
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -61,6 +82,28 @@ jobs:
           # Copy LICENSE and README from repo root
           cp ../LICENSE . 2>/dev/null || true
           cp ../README.md . 2>/dev/null || true
+          # Pre-flight: verify auth works before publishing
+          echo "--- npm whoami ---"
+          npm whoami
+          echo "--- npm publish --dry-run ---"
+          npm publish --access public --dry-run
+          echo "--- npm publish ---"
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify npm publish succeeded
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Waiting for npm registry to propagate..."
+          for i in 1 2 3 4 5 6; do
+            sleep 10
+            published=$(npm view @4ier/notion-cli@${VERSION} version 2>/dev/null || true)
+            if [ "$published" = "${VERSION}" ]; then
+              echo "✓ @4ier/notion-cli@${VERSION} is live on npm"
+              exit 0
+            fi
+            echo "attempt $i: not yet visible, retrying..."
+          done
+          echo "::error::npm publish appears to have failed — @4ier/notion-cli@${VERSION} not visible after 60s"
+          exit 1
