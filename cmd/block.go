@@ -197,7 +197,8 @@ Examples:
   notion block append <page-id> "Hello world"
   notion block append <page-id> --type heading1 "Section Title"
   notion block append <page-id> --type code --lang go "fmt.Println()"
-  notion block append <page-id> --file notes.md`,
+  notion block append <page-id> --file notes.md
+  notion block append <page-id> --image-url https://example.com/a.png --caption "图 1-1"`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := getToken()
@@ -208,6 +209,17 @@ Examples:
 		parentID := util.ResolveID(args[0])
 		blockType, _ := cmd.Flags().GetString("type")
 		filePath, _ := cmd.Flags().GetString("file")
+		imageURL, _ := cmd.Flags().GetString("image-url")
+		caption, _ := cmd.Flags().GetString("caption")
+
+		text := ""
+		if len(args) > 1 {
+			text = args[1]
+		}
+
+		if err := validateMediaFlags(imageURL, filePath, text); err != nil {
+			return err
+		}
 
 		if blockType == "" {
 			blockType = "paragraph"
@@ -218,7 +230,9 @@ Examples:
 
 		var children []map[string]interface{}
 
-		if filePath != "" {
+		if imageURL != "" {
+			children = append(children, buildExternalImageBlock(imageURL, caption))
+		} else if filePath != "" {
 			// Read file and parse markdown to blocks
 			data, err := os.ReadFile(filePath)
 			if err != nil {
@@ -226,12 +240,8 @@ Examples:
 			}
 			children = parseMarkdownToBlocks(string(data))
 		} else {
-			text := ""
-			if len(args) > 1 {
-				text = args[1]
-			}
 			if text == "" {
-				return fmt.Errorf("text content or --file is required")
+				return fmt.Errorf("text content, --file, or --image-url is required")
 			}
 
 			notionType := mapBlockType(blockType)
@@ -324,7 +334,8 @@ var blockInsertCmd = &cobra.Command{
 Examples:
   notion block insert <page-id> "New paragraph" --after <block-id>
   notion block insert <page-id> "Section" --after <block-id> --type h2
-  notion block insert <page-id> --file notes.md --after <block-id>`,
+  notion block insert <page-id> --file notes.md --after <block-id>
+  notion block insert <page-id> --after <block-id> --image-url https://example.com/a.png --caption "图 1-1"`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := getToken()
@@ -336,6 +347,17 @@ Examples:
 		afterID, _ := cmd.Flags().GetString("after")
 		blockType, _ := cmd.Flags().GetString("type")
 		filePath, _ := cmd.Flags().GetString("file")
+		imageURL, _ := cmd.Flags().GetString("image-url")
+		caption, _ := cmd.Flags().GetString("caption")
+
+		text := ""
+		if len(args) > 1 {
+			text = args[1]
+		}
+
+		if err := validateMediaFlags(imageURL, filePath, text); err != nil {
+			return err
+		}
 
 		if afterID == "" {
 			return fmt.Errorf("--after <block-id> is required (use 'block append' to add to end)")
@@ -351,19 +373,17 @@ Examples:
 
 		var children []map[string]interface{}
 
-		if filePath != "" {
+		if imageURL != "" {
+			children = append(children, buildExternalImageBlock(imageURL, caption))
+		} else if filePath != "" {
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				return fmt.Errorf("read file: %w", err)
 			}
 			children = parseMarkdownToBlocks(string(data))
 		} else {
-			text := ""
-			if len(args) > 1 {
-				text = args[1]
-			}
 			if text == "" {
-				return fmt.Errorf("text content or --file is required")
+				return fmt.Errorf("text content, --file, or --image-url is required")
 			}
 
 			notionType := mapBlockType(blockType)
@@ -560,10 +580,14 @@ func init() {
 	blockAppendCmd.Flags().StringP("type", "t", "paragraph", "Block type: paragraph, h1, h2, h3, todo, bullet, numbered, quote, code, callout, divider")
 	blockAppendCmd.Flags().String("lang", "plain text", "Language for code blocks (e.g. go, python, bash)")
 	blockAppendCmd.Flags().String("file", "", "Read content from a file (each double-newline-separated section becomes a block)")
+	blockAppendCmd.Flags().String("image-url", "", "Append an external image block by URL (http/https)")
+	blockAppendCmd.Flags().String("caption", "", "Caption for --image-url (optional)")
 	blockInsertCmd.Flags().String("after", "", "Block ID to insert after (required)")
 	blockInsertCmd.Flags().StringP("type", "t", "paragraph", "Block type")
 	blockInsertCmd.Flags().String("lang", "plain text", "Language for code blocks")
 	blockInsertCmd.Flags().String("file", "", "Read content from a file")
+	blockInsertCmd.Flags().String("image-url", "", "Insert an external image block by URL (http/https)")
+	blockInsertCmd.Flags().String("caption", "", "Caption for --image-url (optional)")
 	blockListCmd.Flags().String("cursor", "", "Pagination cursor")
 	blockListCmd.Flags().Bool("all", false, "Fetch all pages of results")
 	blockListCmd.Flags().Int("depth", 1, "Depth of nested blocks to fetch (default 1)")
@@ -581,6 +605,39 @@ func init() {
 	blockCmd.AddCommand(blockUpdateCmd)
 	blockCmd.AddCommand(blockDeleteCmd)
 	blockCmd.AddCommand(blockMoveCmd)
+}
+
+func buildExternalImageBlock(url, caption string) map[string]interface{} {
+	image := map[string]interface{}{
+		"type":     "external",
+		"external": map[string]interface{}{"url": url},
+	}
+	if caption != "" {
+		image["caption"] = []map[string]interface{}{
+			{"type": "text", "text": map[string]interface{}{"content": caption}},
+		}
+	}
+	return map[string]interface{}{
+		"object": "block",
+		"type":   "image",
+		"image":  image,
+	}
+}
+
+func validateMediaFlags(imageURL, filePath, text string) error {
+	if imageURL == "" {
+		return nil
+	}
+	if filePath != "" {
+		return fmt.Errorf("--image-url cannot be combined with --file")
+	}
+	if text != "" {
+		return fmt.Errorf("--image-url cannot be combined with a positional text argument")
+	}
+	if !strings.HasPrefix(imageURL, "http://") && !strings.HasPrefix(imageURL, "https://") {
+		return fmt.Errorf("--image-url must be an http:// or https:// URL")
+	}
+	return nil
 }
 
 func mapBlockType(t string) string {

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -485,6 +486,78 @@ func TestMapBlockTypeAliases(t *testing.T) {
 			got := mapBlockType(tt.input)
 			if got != tt.want {
 				t.Errorf("mapBlockType(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildExternalImageBlock(t *testing.T) {
+	t.Run("without caption", func(t *testing.T) {
+		b := buildExternalImageBlock("https://example.com/a.png", "")
+		if b["type"] != "image" {
+			t.Fatalf("type = %v, want image", b["type"])
+		}
+		img, ok := b["image"].(map[string]interface{})
+		if !ok {
+			t.Fatal("image field not a map")
+		}
+		if img["type"] != "external" {
+			t.Errorf("image.type = %v, want external", img["type"])
+		}
+		ext, _ := img["external"].(map[string]interface{})
+		if ext["url"] != "https://example.com/a.png" {
+			t.Errorf("external.url = %v", ext["url"])
+		}
+		if _, has := img["caption"]; has {
+			t.Error("caption should be omitted when empty")
+		}
+	})
+
+	t.Run("with caption", func(t *testing.T) {
+		b := buildExternalImageBlock("https://x/y.png", "图 1-1 悬挂式")
+		img, _ := b["image"].(map[string]interface{})
+		cap, ok := img["caption"].([]map[string]interface{})
+		if !ok || len(cap) != 1 {
+			t.Fatalf("caption shape wrong: %#v", img["caption"])
+		}
+		txt, _ := cap[0]["text"].(map[string]interface{})
+		if txt["content"] != "图 1-1 悬挂式" {
+			t.Errorf("caption content = %v", txt["content"])
+		}
+	})
+}
+
+func TestValidateMediaFlags(t *testing.T) {
+	tests := []struct {
+		name     string
+		imageURL string
+		filePath string
+		text     string
+		wantErr  string
+	}{
+		{"no image url passes", "", "notes.md", "hi", ""},
+		{"valid https", "https://x/y.png", "", "", ""},
+		{"valid http", "http://x/y.png", "", "", ""},
+		{"ftp rejected", "ftp://x/y.png", "", "", "http://"},
+		{"plain text rejected", "not-a-url", "", "", "http://"},
+		{"empty url treated as absent", "", "", "", ""},
+		{"image-url with file conflicts", "https://x/y.png", "notes.md", "", "--file"},
+		{"image-url with text conflicts", "https://x/y.png", "", "hello", "positional text"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateMediaFlags(tt.imageURL, tt.filePath, tt.text)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want contains %q", err.Error(), tt.wantErr)
 			}
 		})
 	}

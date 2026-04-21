@@ -134,6 +134,18 @@ notion block append <page-id> --file document.md
 ```
 Supports headings, bullets, numbered lists, todos, quotes, code blocks, and dividers.
 
+### External Images
+Insert or append an image block by URL (no upload — points to externally hosted image):
+```sh
+# Insert after a specific block (e.g. next to a "TODO: add figure" placeholder)
+notion block insert <page-id> --after <block-id> \
+  --image-url https://example.com/diagram.png \
+  --caption "Figure 1 — architecture"
+
+# Append to end of page
+notion block append <page-id> --image-url https://example.com/diagram.png
+```
+
 ### Recursive Block Reading
 ```sh
 notion block list <page-id> --depth 5 --all
