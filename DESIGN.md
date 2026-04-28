@@ -16,7 +16,6 @@
 ## Authentication
 
 ```
-notion auth login              # Interactive: open browser → OAuth flow
 notion auth login --with-token  # Read an integration token from stdin
 notion auth logout
 notion auth status             # Show current auth state
@@ -24,6 +23,8 @@ notion auth switch             # Switch between multiple workspaces
 ```
 
 Store tokens in OS keychain (like `gh`) with fallback to `~/.config/notion/credentials.json`. Also support `NOTION_TOKEN` env var for CI/agent use.
+
+**On OAuth / public integrations:** not planned. Notion's `POST /v1/oauth/token` only supports `authorization_code` and `refresh_token` grant types — no PKCE, no device flow, no secretless public-client mode. Shipping OAuth in a publicly-distributed OSS binary would require either hardcoding `client_secret` (defeats the purpose) or running a hosted token-exchange proxy (ongoing infra commitment). Neither is justified by current use cases, which are well served by private integration tokens via `--with-token` or `NOTION_TOKEN`. Will revisit if Notion adds CLI-friendly auth primitives.
 
 ## Command Structure
 
@@ -198,7 +199,6 @@ Last edited: 2 hours ago by @alice
 - `notion file upload`
 - `notion page move`
 - OS keychain auth storage
-- OAuth flow (for public integrations)
 - Shell completions
 - Local caching
 
