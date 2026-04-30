@@ -125,11 +125,28 @@ Examples:
 
 var blockUpdateCmd = &cobra.Command{
 	Use:   "update <block-id|url>",
-	Short: "Update a block",
-	Long: `Update a block's content.
+	Short: "Update a block's content",
+	Long: `Update a block's content in place.
+
+Accepts one of:
+  --text <str>     plain text (stored as a single rich_text with no
+                   inline annotations). Default when nothing else is set.
+  --markdown       when combined with --text, runs the string through
+                   the markdown inline parser so **bold**, *italic*,
+                   ` + "`code`" + `, ~~strike~~, and [links](u) are preserved.
+  --file <path>    read markdown from a file; content must map to
+                   exactly one block. Code-fence language aliases and
+                   inline formatting are applied the same way as
+                   'block append --file'.
+
+The Notion API does not let you change a block's type via PATCH, so if
+--file parses into a block type different from the existing one the
+command fails fast.
 
 Examples:
   notion block update abc123 --text "Updated content"
+  notion block update abc123 --text "See **[design](u)** doc" --markdown
+  notion block update abc123 --file patch.md
   notion block update abc123 --type paragraph --text "New text"`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -141,11 +158,23 @@ Examples:
 		blockID := util.ResolveID(args[0])
 		text, _ := cmd.Flags().GetString("text")
 		blockType, _ := cmd.Flags().GetString("type")
+		filePath, _ := cmd.Flags().GetString("file")
+		markdown, _ := cmd.Flags().GetBool("markdown")
+
+		if text != "" && filePath != "" {
+			return fmt.Errorf("--text and --file are mutually exclusive")
+		}
+		if markdown && filePath != "" {
+			return fmt.Errorf("--markdown is implied for --file; drop --markdown when using --file")
+		}
+		if text == "" && filePath == "" {
+			return fmt.Errorf("one of --text or --file is required")
+		}
 
 		c := client.New(token)
 		c.SetDebug(debugMode)
 
-		// If no type specified, get the block first to determine its type
+		// Resolve target type: user override wins, otherwise inspect the block.
 		if blockType == "" {
 			block, err := c.GetBlock(blockID)
 			if err != nil {
@@ -155,17 +184,13 @@ Examples:
 		} else {
 			blockType = mapBlockType(blockType)
 		}
-
-		if text == "" {
-			return fmt.Errorf("--text is required")
+		if blockType == "" {
+			return fmt.Errorf("could not determine block type; pass --type explicitly")
 		}
 
-		body := map[string]interface{}{
-			blockType: map[string]interface{}{
-				"rich_text": []map[string]interface{}{
-					{"text": map[string]interface{}{"content": text}},
-				},
-			},
+		body, err := buildUpdateBlockBody(blockType, text, filePath, markdown)
+		if err != nil {
+			return err
 		}
 
 		data, err := c.Patch("/v1/blocks/"+blockID, body)
@@ -184,6 +209,45 @@ Examples:
 		fmt.Println("✓ Block updated")
 		return nil
 	},
+}
+
+// buildUpdateBlockBody assembles the PATCH body for a single-block update.
+// It encapsulates the three supported input modes (--text plain, --text with
+// --markdown, --file markdown) so RunE stays thin and the logic is testable.
+func buildUpdateBlockBody(blockType, text, filePath string, markdown bool) (map[string]interface{}, error) {
+	if filePath != "" {
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("read file: %w", err)
+		}
+		blocks := parseMarkdownToBlocks(string(data))
+		if len(blocks) != 1 {
+			return nil, fmt.Errorf("--file must contain exactly one block, got %d; use 'block delete' + 'block append' for multi-block replacements", len(blocks))
+		}
+		parsed := blocks[0]
+		parsedType, _ := parsed["type"].(string)
+		if parsedType != blockType {
+			return nil, fmt.Errorf("block type mismatch: target is %q but --file parsed as %q (Notion's PATCH cannot change block type)", blockType, parsedType)
+		}
+		// Preserve any type-specific fields (language on code, checked on to_do) from the parsed block.
+		inner, _ := parsed[blockType].(map[string]interface{})
+		return map[string]interface{}{blockType: inner}, nil
+	}
+
+	// --text path
+	var richText []map[string]interface{}
+	if markdown {
+		richText = parseInlineFormatting(text)
+	} else {
+		richText = []map[string]interface{}{
+			{"text": map[string]interface{}{"content": text}},
+		}
+	}
+	return map[string]interface{}{
+		blockType: map[string]interface{}{
+			"rich_text": richText,
+		},
+	}, nil
 }
 
 var blockAppendCmd = &cobra.Command{
@@ -616,8 +680,10 @@ func init() {
 	blockListCmd.Flags().Bool("all", false, "Fetch all pages of results")
 	blockListCmd.Flags().Int("depth", 1, "Depth of nested blocks to fetch (default 1)")
 	blockListCmd.Flags().Bool("md", false, "Output as Markdown")
-	blockUpdateCmd.Flags().String("text", "", "New text content (required)")
+	blockUpdateCmd.Flags().String("text", "", "New text content (mutually exclusive with --file)")
 	blockUpdateCmd.Flags().StringP("type", "t", "", "Block type (auto-detected if not specified)")
+	blockUpdateCmd.Flags().String("file", "", "Read markdown from file; must parse to exactly one block")
+	blockUpdateCmd.Flags().Bool("markdown", false, "Parse --text as markdown (bold/italic/code/link)")
 	blockMoveCmd.Flags().String("after", "", "Block ID to position after")
 	blockMoveCmd.Flags().String("before", "", "Block ID to position before")
 	blockMoveCmd.Flags().String("parent", "", "New parent block/page ID to move to")
