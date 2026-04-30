@@ -301,6 +301,23 @@ func (c *Client) AddComment(pageID, text string, mentionUserIDs []string) ([]byt
 	return c.Post("/v1/comments", body)
 }
 
+// UpdateComment edits the rich_text body of an existing comment.
+// Wraps PATCH /v1/comments/:id (added in Notion API 2025).
+func (c *Client) UpdateComment(commentID, text string, mentionUserIDs []string) ([]byte, error) {
+	body := map[string]interface{}{
+		"rich_text": buildCommentRichText(text, mentionUserIDs),
+	}
+	return c.Patch("/v1/comments/"+commentID, body)
+}
+
+// DeleteComment removes a comment by id.
+// Wraps DELETE /v1/comments/:id (added in Notion API 2025). When the
+// target is the anchor comment of a discussion, Notion removes the whole
+// thread; otherwise it removes just that one reply.
+func (c *Client) DeleteComment(commentID string) ([]byte, error) {
+	return c.Delete("/v1/comments/" + commentID)
+}
+
 func buildCommentRichText(text string, mentionUserIDs []string) []map[string]interface{} {
 	var richText []map[string]interface{}
 

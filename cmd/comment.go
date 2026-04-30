@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/4ier/notion-cli/internal/client"
@@ -317,9 +318,106 @@ func init() {
 	commentListCmd.Flags().Bool("all", false, "Fetch all pages of results")
 	commentAddCmd.Flags().String("text", "", "Comment text")
 	commentAddCmd.Flags().StringArray("mention-user", nil, "Mention a Notion user by ID (repeatable)")
+	commentUpdateCmd.Flags().String("text", "", "New comment text (required)")
+	commentUpdateCmd.Flags().StringArray("mention-user", nil, "Mention a Notion user by ID (repeatable)")
 
 	commentCmd.AddCommand(commentListCmd)
 	commentCmd.AddCommand(commentAddCmd)
 	commentCmd.AddCommand(commentGetCmd)
 	commentCmd.AddCommand(commentReplyCmd)
+	commentCmd.AddCommand(commentUpdateCmd)
+	commentCmd.AddCommand(commentDeleteCmd)
+}
+
+var commentUpdateCmd = &cobra.Command{
+	Use:   "update <comment-id>",
+	Short: "Edit an existing comment's text",
+	Long: `Edit the text of an existing comment.
+
+Wraps PATCH /v1/comments/:id (added in Notion's 2025 API). The new
+rich_text is built the same way as 'comment add' — --mention-user works
+if you need to keep or add @mentions.
+
+Examples:
+  notion comment update abc123 --text "Fixed typo in previous comment"
+  notion comment update abc123 --text "with mention" --mention-user <user-id>`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		commentID := strings.TrimSpace(args[0])
+		text, _ := cmd.Flags().GetString("text")
+		mentionUserIDs, _ := cmd.Flags().GetStringArray("mention-user")
+
+		if text == "" && len(mentionUserIDs) == 0 {
+			return fmt.Errorf("--text or --mention-user is required")
+		}
+
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		data, err := c.UpdateComment(commentID, text, mentionUserIDs)
+		if err != nil {
+			return fmt.Errorf("update comment: %w", err)
+		}
+
+		if outputFormat == "json" {
+			var result map[string]interface{}
+			if err := json.Unmarshal(data, &result); err != nil {
+				return fmt.Errorf("parse response: %w", err)
+			}
+			return render.JSON(result)
+		}
+
+		fmt.Println("✓ Comment updated")
+		return nil
+	},
+}
+
+var commentDeleteCmd = &cobra.Command{
+	Use:   "delete <comment-id ...>",
+	Short: "Delete one or more comments",
+	Long: `Delete comments by id. Accepts multiple ids for bulk removal,
+mirroring 'block delete' — per-id errors are printed but do not stop
+the batch.
+
+Note: deleting the anchor (first) comment of a discussion removes the
+whole thread. Deleting a reply removes just that one reply.
+
+Wraps DELETE /v1/comments/:id (added in Notion's 2025 API).
+
+Examples:
+  notion comment delete abc123
+  notion comment delete abc123 def456 ghi789`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		deleted := 0
+		for _, id := range args {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			if _, err := c.DeleteComment(id); err != nil {
+				fmt.Fprintf(os.Stderr, "✗ Failed to delete %s: %v\n", id, err)
+				continue
+			}
+			deleted++
+		}
+
+		if outputFormat != "json" {
+			fmt.Printf("✓ %d comment(s) deleted\n", deleted)
+		}
+		return nil
+	},
 }
