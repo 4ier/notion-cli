@@ -323,14 +323,22 @@ Examples:
 	},
 }
 
-var pageDeleteCmd = &cobra.Command{
-	Use:   "delete <page-id|url>",
-	Short: "Delete (archive) a page",
-	Long: `Archive a Notion page (soft delete).
+var pageArchiveCmd = &cobra.Command{
+	Use:     "archive <page-id|url>",
+	Aliases: []string{"delete", "trash"},
+	Short:   "Archive a page (soft delete, reversible)",
+	Long: `Archive a Notion page.
+
+This is a soft delete — the page moves to the workspace trash but can be
+brought back with 'notion page restore'. Despite the legacy 'delete'
+alias, no content is removed permanently.
+
+Aliases: archive | delete | trash
 
 Examples:
-  notion page delete abc123
-  notion page delete https://notion.so/My-Page-abc123`,
+  notion page archive abc123
+  notion page trash   https://notion.so/My-Page-abc123
+  notion page delete  abc123              # still works for back-compat`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := getToken()
@@ -348,7 +356,7 @@ Examples:
 
 		data, err := c.Patch("/v1/pages/"+pageID, body)
 		if err != nil {
-			return fmt.Errorf("delete page: %w", err)
+			return fmt.Errorf("archive page: %w", err)
 		}
 
 		if outputFormat == "json" {
@@ -359,10 +367,15 @@ Examples:
 			return render.JSON(result)
 		}
 
-		fmt.Println("✓ Page archived")
+		fmt.Println("✓ Page archived (run 'notion page restore' to undo)")
 		return nil
 	},
 }
+
+// pageDeleteCmd is kept as a standalone var pointing at the same RunE
+// purely so existing tests / scripts that reference the variable name
+// still compile. The user-facing command is aliased via pageArchiveCmd.
+var pageDeleteCmd = pageArchiveCmd
 
 var pageMoveCmd = &cobra.Command{
 	Use:   "move <page-id|url>",
@@ -573,7 +586,7 @@ Examples:
 var pageRestoreCmd = &cobra.Command{
 	Use:   "restore <page-id|url>",
 	Short: "Restore an archived page",
-	Long: `Unarchive a Notion page (reverse of delete).
+	Long: `Unarchive a Notion page (reverse of archive / delete / trash).
 
 Examples:
   notion page restore abc123`,
@@ -943,7 +956,7 @@ func init() {
 	pageCmd.AddCommand(pageViewCmd)
 	pageCmd.AddCommand(pageListCmd)
 	pageCmd.AddCommand(pageCreateCmd)
-	pageCmd.AddCommand(pageDeleteCmd)
+	pageCmd.AddCommand(pageArchiveCmd)
 	pageCmd.AddCommand(pageRestoreCmd)
 	pageCmd.AddCommand(pageMoveCmd)
 	pageCmd.AddCommand(pageOpenCmd)
