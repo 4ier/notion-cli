@@ -191,13 +191,18 @@ var blockAppendCmd = &cobra.Command{
 	Short: "Append blocks to a page",
 	Long: `Append content to a Notion page or block.
 
-Supports plain text, block types, and markdown files.
+Supports plain text, block types, and markdown files. Large markdown files
+are handled transparently:
+  - >100 children are auto-batched into sequential PATCHes.
+  - code / rich_text exceeding Notion's 2000-char limit are split by
+    default (override with --on-oversize=truncate|fail).
 
 Examples:
   notion block append <page-id> "Hello world"
   notion block append <page-id> --type heading1 "Section Title"
   notion block append <page-id> --type code --lang go "fmt.Println()"
   notion block append <page-id> --file notes.md
+  notion block append <page-id> --file big.md --on-oversize=truncate
   notion block append <page-id> --image-url https://example.com/a.png --caption "图 1-1"`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -211,6 +216,11 @@ Examples:
 		filePath, _ := cmd.Flags().GetString("file")
 		imageURL, _ := cmd.Flags().GetString("image-url")
 		caption, _ := cmd.Flags().GetString("caption")
+		onOversizeRaw, _ := cmd.Flags().GetString("on-oversize")
+		mode, err := parseOversizeMode(onOversizeRaw)
+		if err != nil {
+			return err
+		}
 
 		text := ""
 		if len(args) > 1 {
@@ -265,11 +275,12 @@ Examples:
 			return fmt.Errorf("no content to append")
 		}
 
-		reqBody := map[string]interface{}{
-			"children": children,
+		children, err = handleOversizedBlocks(children, mode)
+		if err != nil {
+			return err
 		}
 
-		data, err := c.Patch(fmt.Sprintf("/v1/blocks/%s/children", parentID), reqBody)
+		data, err := appendChildrenBatched(c, parentID, "", children)
 		if err != nil {
 			return fmt.Errorf("append block: %w", err)
 		}
@@ -370,6 +381,12 @@ Examples:
 
 		var children []map[string]interface{}
 
+		onOversizeRaw, _ := cmd.Flags().GetString("on-oversize")
+		mode, err := parseOversizeMode(onOversizeRaw)
+		if err != nil {
+			return err
+		}
+
 		if imageURL != "" {
 			children = append(children, buildExternalImageBlock(imageURL, caption))
 		} else if filePath != "" {
@@ -400,12 +417,12 @@ Examples:
 			})
 		}
 
-		reqBody := map[string]interface{}{
-			"children": children,
-			"after":    afterID,
+		children, err = handleOversizedBlocks(children, mode)
+		if err != nil {
+			return err
 		}
 
-		data, err := c.Patch(fmt.Sprintf("/v1/blocks/%s/children", parentID), reqBody)
+		data, err := appendChildrenBatched(c, parentID, afterID, children)
 		if err != nil {
 			return fmt.Errorf("insert block: %w", err)
 		}
@@ -576,12 +593,14 @@ func init() {
 	blockAppendCmd.Flags().String("file", "", "Read content from a file (each double-newline-separated section becomes a block)")
 	blockAppendCmd.Flags().String("image-url", "", "Append an external image block by URL (http/https)")
 	blockAppendCmd.Flags().String("caption", "", "Caption for --image-url (optional)")
+	blockAppendCmd.Flags().String("on-oversize", "split", "Behavior for rich_text >2000 chars: split|truncate|fail")
 	blockInsertCmd.Flags().String("after", "", "Block ID to insert after (required)")
 	blockInsertCmd.Flags().StringP("type", "t", "paragraph", "Block type")
 	blockInsertCmd.Flags().String("lang", "plain text", "Language for code blocks")
 	blockInsertCmd.Flags().String("file", "", "Read content from a file")
 	blockInsertCmd.Flags().String("image-url", "", "Insert an external image block by URL (http/https)")
 	blockInsertCmd.Flags().String("caption", "", "Caption for --image-url (optional)")
+	blockInsertCmd.Flags().String("on-oversize", "split", "Behavior for rich_text >2000 chars: split|truncate|fail")
 	blockListCmd.Flags().String("cursor", "", "Pagination cursor")
 	blockListCmd.Flags().Bool("all", false, "Fetch all pages of results")
 	blockListCmd.Flags().Int("depth", 1, "Depth of nested blocks to fetch (default 1)")
