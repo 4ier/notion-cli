@@ -252,10 +252,7 @@ Examples:
 			}
 			if notionType == "code" {
 				lang, _ := cmd.Flags().GetString("lang")
-				if lang == "" {
-					lang = "plain text"
-				}
-				blockContent["language"] = lang
+				blockContent["language"] = normalizeCodeLanguage(lang)
 			}
 			children = append(children, map[string]interface{}{
 				"object":   "block",
@@ -394,10 +391,7 @@ Examples:
 			}
 			if notionType == "code" {
 				lang, _ := cmd.Flags().GetString("lang")
-				if lang == "" {
-					lang = "plain text"
-				}
-				blockContent["language"] = lang
+				blockContent["language"] = normalizeCodeLanguage(lang)
 			}
 			children = append(children, map[string]interface{}{
 				"object":   "block",
@@ -747,11 +741,7 @@ func parseMarkdownToBlocks(content string) []map[string]interface{} {
 
 		// Code fence
 		if strings.HasPrefix(line, "```") {
-			lang := strings.TrimPrefix(line, "```")
-			lang = strings.TrimSpace(lang)
-			if lang == "" {
-				lang = "plain text"
-			}
+			lang := normalizeCodeLanguage(strings.TrimPrefix(line, "```"))
 			var codeLines []string
 			i++
 			for i < len(lines) && !strings.HasPrefix(lines[i], "```") {
