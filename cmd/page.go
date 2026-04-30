@@ -966,9 +966,21 @@ func init() {
 	pageCmd.AddCommand(pageLinkCmd)
 	pageCmd.AddCommand(pageUnlinkCmd)
 	pageCmd.AddCommand(pageEditCmd)
+	pageCmd.AddCommand(pageMarkdownCmd)
+	pageCmd.AddCommand(pageSetMarkdownCmd)
 
 	pagePropertyCmd.Flags().String("name", "", "Look up the property by its display name instead of id")
 	pagePropertyCmd.Flags().Int("page-size", 100, "Items per underlying API call (1-100)")
+
+	pageMarkdownCmd.Flags().String("out", "", "Write markdown to file instead of stdout")
+
+	pageSetMarkdownCmd.Flags().String("file", "", "Read markdown from file (use '-' for stdin)")
+	pageSetMarkdownCmd.Flags().String("text", "", "Inline markdown string")
+	pageSetMarkdownCmd.Flags().Bool("replace", false, "Replace the entire page content (default if no mode flag set)")
+	pageSetMarkdownCmd.Flags().Bool("append", false, "Append to the end of the page")
+	pageSetMarkdownCmd.Flags().String("after", "", "Insert after ellipsis anchor (format: 'start...end')")
+	pageSetMarkdownCmd.Flags().String("range", "", "Replace range bounded by ellipsis anchor")
+	pageSetMarkdownCmd.Flags().Bool("allow-deleting-content", false, "Allow operation to delete child pages/databases")
 }
 
 // openBrowser opens a URL in the default browser.
