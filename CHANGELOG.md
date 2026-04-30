@@ -4,6 +4,12 @@
 
 | 일시 | 유형 | 범위 | 변경내용 (목적 포함) |
 |---|---|---|---|
+| 2026-04-30 14:20 | feat | page | `page markdown` (GET /v1/pages/:id/markdown) + `page set-markdown` (PATCH, 4가지 모드 replace/append/after/range) 추가 — Notion 서버사이드 마크다운 I/O 일등공민화 (#37) |
+| 2026-04-30 14:20 | feat | page | `page property` 추가: GET /v1/pages/:id/properties/:id 자동 페이지네이션 — 25개 초과 relation/rollup/rich_text 사일런트 절단 수정 (#38) |
+| 2026-04-30 14:20 | feat | block | `block update --file <md>` / `--markdown` 지원 — append/insert와 일관된 마크다운 경험, 블록 타입 불일치 fail-fast (#36) |
+| 2026-04-30 14:20 | feat | comment | `comment update` (PATCH) + `comment delete` (DELETE) 추가 — 2025 API 신규 엔드포인트 래핑 (#33) |
+| 2026-04-30 14:20 | feat | page | `page archive` / `page trash`를 canonical로 승격, `page delete`는 별칭으로 유지 — soft-delete 의미 명확화 (#35) |
+| 2026-04-30 14:20 | feat | file | `file get <upload-id>` 추가: GET /v1/file_uploads/:id 래핑, 업로드 status/URL 확인 (#34) |
 | 2026-04-30 13:00 | feat | auth,client | `auth status`/`doctor`에 integration type 노출 + workspace-root 생성 에러에 concrete workaround 힌트 추가 (#25) |
 | 2026-04-30 13:00 | feat | file | `notion file upload`이 stdin(`-`)과 http(s) URL을 소스로 받도록 확장, `--name` 오버라이드 플래그 추가 (#26) |
 | 2026-04-30 13:00 | feat | block | `--image-file`/`--image-upload` 및 file/video/audio/pdf 5종 미디어 플래그 패밀리 추가 — 업로드-임베드 워크플로우 원-커맨드화 (#23) |
