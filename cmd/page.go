@@ -962,9 +962,13 @@ func init() {
 	pageCmd.AddCommand(pageOpenCmd)
 	pageCmd.AddCommand(pageSetCmd)
 	pageCmd.AddCommand(pagePropsCmd)
+	pageCmd.AddCommand(pagePropertyCmd)
 	pageCmd.AddCommand(pageLinkCmd)
 	pageCmd.AddCommand(pageUnlinkCmd)
 	pageCmd.AddCommand(pageEditCmd)
+
+	pagePropertyCmd.Flags().String("name", "", "Look up the property by its display name instead of id")
+	pagePropertyCmd.Flags().Int("page-size", 100, "Items per underlying API call (1-100)")
 }
 
 // openBrowser opens a URL in the default browser.
