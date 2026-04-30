@@ -42,6 +42,10 @@ func setupAuthTest(t *testing.T) *httptest.Server {
 			"bot": map[string]interface{}{
 				"workspace_name": workspace,
 				"workspace_id":   "ws-123",
+				"owner": map[string]interface{}{
+					"type":      "workspace",
+					"workspace": true,
+				},
 			},
 		})
 	})
