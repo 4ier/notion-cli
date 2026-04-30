@@ -132,6 +132,7 @@ Examples:
 		botInfo, _ := me["bot"].(map[string]interface{})
 		workspaceName, _ := botInfo["workspace_name"].(string)
 		name, _ := me["name"].(string)
+		integrationType := detectIntegrationType(botInfo)
 
 		render.Title("✓", "Authenticated")
 
@@ -147,6 +148,12 @@ Examples:
 
 		render.Field("Workspace", workspaceName)
 		render.Field("Bot", name)
+		if integrationType != "" {
+			render.Field("Integration", integrationType)
+			if integrationType == "internal" {
+				render.Field("Root page", "not allowed (share a parent page)")
+			}
+		}
 
 		// Show other available profiles
 		if len(profiles) > 1 {
@@ -371,8 +378,16 @@ Examples:
 		name, _ := me["name"].(string)
 		botInfo, _ := me["bot"].(map[string]interface{})
 		workspace, _ := botInfo["workspace_name"].(string)
+		integrationType := detectIntegrationType(botInfo)
 		fmt.Printf("  ✓ Auth: %s\n", name)
 		fmt.Printf("  ✓ Workspace: %s\n", workspace)
+		if integrationType != "" {
+			fmt.Printf("  ✓ Integration: %s\n", integrationType)
+			if integrationType == "internal" {
+				fmt.Println("    note: internal integrations cannot create pages at the workspace root;")
+				fmt.Println("          create a parent page in Notion and share it with this integration first.")
+			}
+		}
 
 		// Check 3: Can search
 		result, err := c.Search("", "", 1, "")
@@ -398,4 +413,29 @@ func init() {
 	authCmd.AddCommand(authLogoutCmd)
 	authCmd.AddCommand(authDoctorCmd)
 	authCmd.AddCommand(authSwitchCmd)
+}
+
+// detectIntegrationType inspects the bot object returned by
+// GET /v1/users/me and classifies the integration as "internal",
+// "public", or "" when the shape is unrecognizable.
+//
+// Notion's response includes `bot.owner.type`, which is:
+//   - "workspace" for internal integrations (owned by the workspace)
+//   - "user" for public integrations installed by an individual user
+//
+// Ref: https://developers.notion.com/reference/user#bot
+func detectIntegrationType(botInfo map[string]interface{}) string {
+	owner, ok := botInfo["owner"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	ownerType, _ := owner["type"].(string)
+	switch ownerType {
+	case "workspace":
+		return "internal"
+	case "user":
+		return "public"
+	default:
+		return ""
+	}
 }

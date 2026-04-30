@@ -408,6 +408,10 @@ func errorHint(code, message string) string {
 	case "rate_limited":
 		return "Too many requests. Wait a moment and try again"
 	case "validation_error":
+		if strings.Contains(message, "Internal integrations aren't owned") ||
+			strings.Contains(message, "insert_content") {
+			return internalIntegrationRootPageHint
+		}
 		if strings.Contains(message, "is not a property") {
 			return "Check property names with 'notion db view <id>' or 'notion page props <id>'"
 		}
@@ -421,3 +425,13 @@ func errorHint(code, message string) string {
 	}
 	return ""
 }
+
+// internalIntegrationRootPageHint is the one-paragraph explanation the CLI
+// prints when an internal integration tries to create a workspace-root page.
+// It's a multi-line string because that's the shape most users need: the
+// API error is accurate but not directly actionable.
+const internalIntegrationRootPageHint = "Internal integrations can't create pages at the workspace root.\n" +
+	"     Workaround: create (or pick) a parent page in the Notion UI, share\n" +
+	"     it with this integration, then pass its ID as the parent:\n" +
+	"         notion page create <shared-page-id> --title \"...\"\n" +
+	"     To list pages shared with your integration: notion page list"

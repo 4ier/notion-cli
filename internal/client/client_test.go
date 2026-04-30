@@ -29,6 +29,8 @@ func TestErrorHint(t *testing.T) {
 		{"rate_limited", "Rate limited", "Wait"},
 		{"validation_error", "is not a property that exists", "notion db view"},
 		{"validation_error", "body failed validation", "--debug"},
+		{"validation_error", "Internal integrations aren't owned by a single user, so creating workspace-level private pages is not supported.", "share"},
+		{"validation_error", "use a public integration with insert_content capability", "share"},
 		{"conflict_error", "conflict", "Retry"},
 		{"internal_server_error", "error", "Notion's servers"},
 		{"service_unavailable", "unavailable", "Try again"},
