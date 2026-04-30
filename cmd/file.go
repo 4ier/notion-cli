@@ -446,9 +446,110 @@ func mediaBlockTypeForContentType(contentType string) string {
 	}
 }
 
+var fileGetCmd = &cobra.Command{
+	Use:   "get <upload-id>",
+	Short: "Retrieve a file upload by ID",
+	Long: `Retrieve a single file upload by its ID, e.g. to check 'status'
+(pending / uploaded / expired) or recover an existing file_upload id for
+re-use in a block.
+
+Examples:
+  notion file get 351d45fb-804f-8151-a5ea-00b27d0b9258
+  notion file get 351d45fb-... --format json`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, err := getToken()
+		if err != nil {
+			return err
+		}
+
+		uploadID := strings.TrimSpace(args[0])
+		if uploadID == "" {
+			return fmt.Errorf("upload id is required")
+		}
+
+		c := client.New(token)
+		c.SetDebug(debugMode)
+
+		data, err := c.Get("/v1/file_uploads/" + uploadID)
+		if err != nil {
+			return fmt.Errorf("get file upload: %w", err)
+		}
+
+		var result map[string]interface{}
+		if err := json.Unmarshal(data, &result); err != nil {
+			return fmt.Errorf("parse response: %w", err)
+		}
+
+		if outputFormat == "json" {
+			return render.JSON(result)
+		}
+
+		renderFileUpload(result)
+		return nil
+	},
+}
+
+// renderFileUpload prints a human-friendly summary of a file_upload object.
+// Kept as a standalone helper so it can be reused by future commands (for
+// example a --watch flag on `file upload` that polls status via 'file get').
+func renderFileUpload(result map[string]interface{}) {
+	name, _ := result["filename"].(string)
+	if name == "" {
+		name, _ = result["name"].(string)
+	}
+	id, _ := result["id"].(string)
+	status, _ := result["status"].(string)
+	contentType, _ := result["content_type"].(string)
+	created, _ := result["created_time"].(string)
+	expires, _ := result["expiry_time"].(string)
+
+	var size int64
+	switch v := result["content_length"].(type) {
+	case float64:
+		size = int64(v)
+	case int64:
+		size = v
+	}
+
+	title := "File upload"
+	if name != "" {
+		title = fmt.Sprintf("File upload: %s", name)
+	}
+	render.Title("✓", title)
+	render.Field("ID", id)
+	if status != "" {
+		render.Field("Status", status)
+	}
+	if size > 0 {
+		render.Field("Size", fmt.Sprintf("%d bytes", size))
+	}
+	if contentType != "" {
+		render.Field("Content-Type", contentType)
+	}
+	if created != "" {
+		if len(created) > 10 {
+			created = created[:10]
+		}
+		render.Field("Created", created)
+	}
+	if expires != "" {
+		if len(expires) > 10 {
+			expires = expires[:10]
+		}
+		render.Field("Expires", expires)
+	}
+	if fileURL, ok := result["file"].(map[string]interface{}); ok {
+		if u, _ := fileURL["url"].(string); u != "" {
+			render.Field("URL", u)
+		}
+	}
+}
+
 func init() {
 	fileUploadCmd.Flags().String("to", "", "Target page ID to attach file to")
 	fileUploadCmd.Flags().String("name", "", "Override filename (required for stdin source, optional for URL)")
 	fileCmd.AddCommand(fileListCmd)
 	fileCmd.AddCommand(fileUploadCmd)
+	fileCmd.AddCommand(fileGetCmd)
 }
