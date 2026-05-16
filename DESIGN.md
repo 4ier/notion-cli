@@ -9,6 +9,24 @@
 3. **Two audiences:** Humans (pretty output, interactive prompts) and Agents/Scripts (JSON output, piping, zero interactivity).
 4. **Offline-first thinking.** Cache what makes sense. Don't hit the API when you don't have to.
 
+## Non-goals
+
+Things this project will *not* do, so the scope stays tight and the maintenance load stays sane:
+
+- **OAuth / public-integration login.** Notion's `POST /v1/oauth/token` only supports `authorization_code` and `refresh_token` grant types — no PKCE, no device flow, no secretless public-client mode. Shipping OAuth in a publicly-distributed OSS binary would require either hardcoding `client_secret` (defeats the purpose) or running a hosted token-exchange proxy (ongoing infra commitment). Internal integration tokens via `--with-token` or `NOTION_TOKEN` cover the actual use cases.
+- **Notion Workers / runtime deployment.** Workers belong to the official `ntn` CLI — they're tied to Notion-hosted infrastructure that only Notion can provision. We won't shadow that surface.
+- **A Notion clone in the terminal.** This is a CLI for the Notion API, not a TUI for browsing your workspace.
+- **Schema migrations / data-modeling DSL.** Out of scope; use the Notion UI or a real migration tool.
+
+## Relationship to Notion's official `ntn` CLI
+
+Notion launched its own CLI ([ntn](https://ntn.dev)) in 2026, focused on Workers deployment with convenience commands for pages, files, and the raw API. The two tools coexist deliberately:
+
+- `ntn` owns first-party auth (OAuth + keychain), Workers deployment, and the official update channel.
+- `notion-cli` owns broad resource CRUD (blocks, comments, users, search, full database CRUD), Windows support, fully open-source distribution, and an API surface tuned for scripts and AI agents.
+
+When Notion ships features that obsolete a piece of `notion-cli`, we remove that piece rather than fight the duplicate.
+
 ## Name
 
 `notion` — short, obvious, no ambiguity. Installable as a single binary.
@@ -24,7 +42,7 @@ notion auth switch             # Switch between multiple workspaces
 
 Store tokens in OS keychain (like `gh`) with fallback to `~/.config/notion/credentials.json`. Also support `NOTION_TOKEN` env var for CI/agent use.
 
-**On OAuth / public integrations:** not planned. Notion's `POST /v1/oauth/token` only supports `authorization_code` and `refresh_token` grant types — no PKCE, no device flow, no secretless public-client mode. Shipping OAuth in a publicly-distributed OSS binary would require either hardcoding `client_secret` (defeats the purpose) or running a hosted token-exchange proxy (ongoing infra commitment). Neither is justified by current use cases, which are well served by private integration tokens via `--with-token` or `NOTION_TOKEN`. Will revisit if Notion adds CLI-friendly auth primitives.
+See [Non-goals](#non-goals) for why OAuth login is not on the roadmap.
 
 ## Command Structure
 

@@ -53,6 +53,26 @@ docker run --rm -e NOTION_TOKEN ghcr.io/4ier/notion-cli search "meeting"
 
 Download from [GitHub Releases](https://github.com/4ier/notion-cli/releases) — available for Linux, macOS, and Windows (amd64/arm64).
 
+## How does this compare to Notion's official `ntn` CLI?
+
+Notion launched an [official CLI named `ntn`](https://ntn.dev) in 2026. They're both real, both useful, and they overlap less than the names suggest.
+
+|  | `notion-cli` (this) | `ntn` (official) |
+|---|---|---|
+| **Maintainer** | Open source, MIT, fully on GitHub | Notion (core binary not open source) |
+| **Status** | Stable releases since v0.1.0 | Public Beta |
+| **Auth** | Internal integration token (`NOTION_TOKEN` or `auth login --with-token`) | Browser OAuth login + keychain, or `NOTION_API_TOKEN` |
+| **Platforms** | Linux, macOS, **Windows** | Linux, macOS (Windows not supported) |
+| **API surface** | Full CRUD across pages, databases, blocks, comments, users, search, files | Pages (Markdown round-trip), data source query, files, raw `api` |
+| **Workers / runtime** | Out of scope | First-class (`ntn workers new/deploy`) |
+| **Design intent** | Ergonomic resource access for humans, scripts, and AI agents | Build and deploy Notion Workers, plus convenience access to a few resources |
+
+**Pick `ntn` if** you want OAuth login, you're building [Notion Workers](https://developers.notion.com/), or you prefer a first-party tool on macOS/Linux.
+
+**Pick `notion-cli` if** you need broad resource CRUD (blocks, comments, users, search, full database CRUD), you're on Windows, you prefer a fully open-source binary, or you're driving Notion from scripts and AI agents using a long-lived integration token.
+
+The two tools coexist on the same machine without conflict — `ntn` calls itself `ntn`, this one calls itself `notion`.
+
 ## Quick Start
 
 ```sh
