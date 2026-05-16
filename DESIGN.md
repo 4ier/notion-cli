@@ -15,6 +15,7 @@ Things this project will *not* do, so the scope stays tight and the maintenance 
 
 - **OAuth / public-integration login.** Notion's `POST /v1/oauth/token` only supports `authorization_code` and `refresh_token` grant types — no PKCE, no device flow, no secretless public-client mode. Shipping OAuth in a publicly-distributed OSS binary would require either hardcoding `client_secret` (defeats the purpose) or running a hosted token-exchange proxy (ongoing infra commitment). Internal integration tokens via `--with-token` or `NOTION_TOKEN` cover the actual use cases.
 - **Notion Workers / runtime deployment.** Workers belong to the official `ntn` CLI — they're tied to Notion-hosted infrastructure that only Notion can provision. We won't shadow that surface.
+- **MCP server mode.** A CLI is already a native agent affordance. `exec("notion db query <id> --format json")` with structured output is more direct than wrapping the same calls in MCP's protocol layer, tool descriptors, and stdio lifecycle. We'd add surface area without giving agents anything they can't already do. Other projects own that flavor; we stay a CLI.
 - **A Notion clone in the terminal.** This is a CLI for the Notion API, not a TUI for browsing your workspace.
 - **Schema migrations / data-modeling DSL.** Out of scope; use the Notion UI or a real migration tool.
 
