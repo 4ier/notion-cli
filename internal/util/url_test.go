@@ -34,6 +34,16 @@ func TestResolveID(t *testing.T) {
 			want:  "c9e9f681-ec8e-4eb7-be25-bbbe479b05b0",
 		},
 		{
+			name:  "app.notion.com /p copied URL with slug",
+			input: "https://app.notion.com/p/My-Page-c9e9f681ec8e4eb7be25bbbe479b05b0?source=copy_link",
+			want:  "c9e9f681-ec8e-4eb7-be25-bbbe479b05b0",
+		},
+		{
+			name:  "app.notion.com /p copied URL without slug",
+			input: "https://app.notion.com/p/c9e9f681ec8e4eb7be25bbbe479b05b0",
+			want:  "c9e9f681-ec8e-4eb7-be25-bbbe479b05b0",
+		},
+		{
 			name:  "short string passthrough",
 			input: "abc123",
 			want:  "abc123",

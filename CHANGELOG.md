@@ -4,6 +4,7 @@
 
 | 일시 | 유형 | 범위 | 변경내용 (목적 포함) |
 |---|---|---|---|
+| 2026-06-05 14:19 | fix | util | `app.notion.com/p/...` 복사 URL에서 page ID 추출 지원 — `<page-id\|url>` 입력 호환성 개선 (#57) |
 | 2026-04-30 14:20 | feat | page | `page markdown` (GET /v1/pages/:id/markdown) + `page set-markdown` (PATCH, 4가지 모드 replace/append/after/range) 추가 — Notion 서버사이드 마크다운 I/O 일등공민화 (#37) |
 | 2026-04-30 14:20 | feat | page | `page property` 추가: GET /v1/pages/:id/properties/:id 자동 페이지네이션 — 25개 초과 relation/rollup/rich_text 사일런트 절단 수정 (#38) |
 | 2026-04-30 14:20 | feat | block | `block update --file <md>` / `--markdown` 지원 — append/insert와 일관된 마크다운 경험, 블록 타입 불일치 fail-fast (#36) |
