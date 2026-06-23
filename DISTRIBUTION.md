@@ -1,36 +1,36 @@
-# Notion CLI 分发方案
+# Notion CLI Distribution Plan
 
-## 一、安装渠道（按优先级排序）
+## 1. Installation Channels (by priority)
 
-### Tier 1 — 必须做（覆盖 80% 用户）
+### Tier 1 — Must-do (covers 80% of users)
 
-| 渠道 | 目标用户 | 实现方式 | 工作量 |
+| Channel | Target Users | Approach | Effort |
 |------|---------|---------|--------|
-| **GitHub Releases** | 所有平台 | goreleaser + GitHub Actions | 1h |
-| **go install** | Go 开发者 | 已就绪（`go install github.com/4ier/notion-cli@latest`） | 0 |
-| **Homebrew Tap** | macOS/Linux 开发者 | goreleaser 自动生成 formula → `4ier/homebrew-tap` | 30min |
+| **GitHub Releases** | All platforms | goreleaser + GitHub Actions | 1h |
+| **go install** | Go developers | Already ready (`go install github.com/4ier/notion-cli@latest`) | 0 |
+| **Homebrew Tap** | macOS/Linux developers | goreleaser auto-generate formula → `4ier/homebrew-tap` | 30min |
 
-### Tier 2 — 应该做（扩大覆盖）
+### Tier 2 — Should-do (expand coverage)
 
-| 渠道 | 目标用户 | 实现方式 | 工作量 |
+| Channel | Target Users | Approach | Effort |
 |------|---------|---------|--------|
-| **npm wrapper** | Node.js/agent 生态 | 轻量 npm 包 `@4ier/notion-cli`，postinstall 拉二进制 | 2h |
-| **Docker** | CI/CD/自动化 | `ghcr.io/4ier/notion-cli` | 30min |
-| **Scoop** | Windows | goreleaser 内置 scoop manifest | 15min |
+| **npm wrapper** | Node.js/agent ecosystem | Lightweight npm package `@4ier/notion-cli`, postinstall fetches binary | 2h |
+| **Docker** | CI/CD/automation | `ghcr.io/4ier/notion-cli` | 30min |
+| **Scoop** | Windows | goreleaser built-in scoop manifest | 15min |
 
-### Tier 3 — 锦上添花（长尾）
+### Tier 3 — Nice-to-have (long tail)
 
-| 渠道 | 目标用户 | 实现方式 | 工作量 |
+| Channel | Target Users | Approach | Effort |
 |------|---------|---------|--------|
 | **AUR** | Arch Linux | PKGBUILD | 30min |
 | **Nix** | NixOS | flake.nix | 1h |
-| **skills.sh** | AI agent | 已就绪 | 0 |
+| **skills.sh** | AI agent | Already ready | 0 |
 
 ---
 
-## 二、实现计划
+## 2. Implementation Plan
 
-### Phase 1: goreleaser + CI（今天）
+### Phase 1: goreleaser + CI (today)
 
 ```
 .goreleaser.yaml
@@ -48,26 +48,26 @@
 └── GITHUB_TOKEN (auto)
 ```
 
-**执行步骤：**
-1. 创建 `.goreleaser.yaml`
-2. 创建 `.github/workflows/release.yml` + `.github/workflows/test.yml`
-3. 创建 `4ier/homebrew-tap` 和 `4ier/scoop-bucket` 仓库
-4. 打 tag `v0.2.0`，推送触发自动发布
-5. 验证: `brew install 4ier/tap/notion-cli`
+**Steps:**
+1. Create `.goreleaser.yaml`
+2. Create `.github/workflows/release.yml` + `.github/workflows/test.yml`
+3. Create `4ier/homebrew-tap` and `4ier/scoop-bucket` repos
+4. Tag `v0.2.0`, push to trigger automated release
+5. Verify: `brew install 4ier/tap/notion-cli`
 
-### Phase 2: npm wrapper（本周）
+### Phase 2: npm wrapper (this week)
 
 ```
 notion-cli-npm/
 ├── package.json     # name: @4ier/notion-cli
-├── install.js       # postinstall: 检测平台 → 下载对应 GitHub Release 二进制
-├── bin/notion       # shell wrapper → 执行下载的二进制
+├── install.js       # postinstall: detect platform → download corresponding GitHub Release binary
+├── bin/notion       # shell wrapper → execute downloaded binary
 └── README.md
 ```
 
-用户体验: `npx @4ier/notion-cli search "meeting notes"`
+User experience: `npx @4ier/notion-cli search "meeting notes"`
 
-### Phase 3: Docker（本周）
+### Phase 3: Docker (this week)
 
 ```dockerfile
 FROM alpine:3.21
@@ -75,70 +75,68 @@ COPY notion /usr/local/bin/
 ENTRYPOINT ["notion"]
 ```
 
-goreleaser 内置 Docker 支持，一并配置。
+goreleaser has built-in Docker support, configure together.
 
 ---
 
-## 三、推广渠道（按 ROI 排序）
+## 3. Distribution Channels (by ROI)
 
-### 高 ROI
-| 渠道 | 策略 | 时机 |
+### High ROI
+| Channel | Strategy | Timing |
 |------|------|------|
-| **r/Notion** (1.2M members) | "I built a CLI for Notion" 帖，demo GIF，链接 GitHub | v0.2.0 发布当天 |
-| **Hacker News** | Show HN: Full Notion CLI — 38 commands | 同上，UTC 上午 |
-| **X/Twitter** | 线程：问题→方案→demo→链接，@NotionHQ | 同上 |
+| **r/Notion** (1.2M members) | "I built a CLI for Notion" post, demo GIF, link to GitHub | v0.2.0 launch day |
+| **Hacker News** | Show HN: Full Notion CLI — 38 commands | Same day, UTC morning |
+| **X/Twitter** | Thread: problem → solution → demo → link, @NotionHQ | Same day |
 
-### 中 ROI
-| 渠道 | 策略 | 时机 |
+### Medium ROI
+| Channel | Strategy | Timing |
 |------|------|------|
-| **r/commandline** | 侧重 CLI 设计哲学（gh 对标） | 发布 +1 天 |
-| **Product Hunt** | 完整 launch page | 发布 +3 天 |
-| **Dev.to / Hashnode** | 技术文章：Notion API → CLI 的设计决策 | 发布 +1 周 |
+| **r/commandline** | Focus on CLI design philosophy (gh parity) | Launch +1 day |
+| **Product Hunt** | Full launch page | Launch +3 days |
+| **Dev.to / Hashnode** | Technical article: Notion API → CLI design decisions | Launch +1 week |
 
-### 长尾
-| 渠道 | 策略 | 时机 |
+### Long tail
+| Channel | Strategy | Timing |
 |------|------|------|
-| **Notion 社区** (Discord/论坛) | 作为工具分享 | 持续 |
-| **GitHub trending** | 靠 star 自然进入 | 有机增长 |
-| **Awesome Notion** | 提 PR 加入列表 | v0.2.0 后 |
+| **Notion Community** (Discord/forums) | Share as a tool | Ongoing |
+| **GitHub trending** | Organic growth via stars | Organic |
+| **Awesome Notion** | Submit PR to be listed | After v0.2.0 |
 
 ---
 
-## 四、推广素材（需要准备）
+## 4. Launch Materials (to prepare)
 
-1. **Demo GIF/视频** — 30 秒终端录屏，展示核心流程：
+1. **Demo GIF/video** — 30-second terminal recording showing core flow:
    - `notion auth login` → `notion search` → `notion db query --filter` → `notion page create`
-   - 用 [vhs](https://github.com/charmbracelet/vhs) 或 asciinema 录制
+   - Record with [vhs](https://github.com/charmbracelet/vhs) or asciinema
 
-2. **README 升级** — 加 badges、GIF、安装方式表格、对标竞品
+2. **README upgrade** — Add badges, GIF, installation methods table, comparison with alternatives
 
-3. **一句话 pitch**: "Like `gh` for GitHub, but for Notion. 39 commands. One binary."
+3. **One-liner pitch**: "Like `gh` for GitHub, but for Notion. 39 commands. One binary."
 
-4. **Twitter 线程**（已有 Notion page 可以改写）
+4. **Twitter thread** (existing Notion page can be adapted)
 
 ---
 
-## 五、时间线
+## 5. Timeline
 
-| 日期 | 里程碑 |
+| Date | Milestone |
 |------|--------|
 | 2/19 | goreleaser + CI + homebrew tap + scoop ✅ |
-| 2/19 | 打 v0.2.0 tag，触发首次自动发布 |
-| 2/19 | README 升级 + demo GIF 录制 |
-| 2/20 | npm wrapper 发布 |
-| 2/20 | r/Notion + HN + X 同步发帖 |
-| 2/21 | Product Hunt 准备 |
+| 2/19 | Tag v0.2.0, trigger first automated release |
+| 2/19 | README upgrade + demo GIF recording |
+| 2/20 | npm wrapper release |
+| 2/20 | r/Notion + HN + X simultaneous posts |
+| 2/21 | Product Hunt preparation |
 | 2/22 | Docker image + Awesome Notion PR |
-| 持续 | 根据反馈迭代，社区回复 |
+| Ongoing | Iterate based on feedback, community replies |
 
----
+## 6. Success Metrics
 
-## 六、成功指标
-
-| 指标 | 1 周目标 | 1 月目标 |
+| Metric | 1 Week Target | 1 Month Target |
 |------|---------|---------|
 | GitHub Stars | 50 | 300 |
-| npm 周下载 | 20 | 100 |
-| Homebrew 安装 | 10 | 50 |
+| npm Weekly Downloads | 20 | 100 |
+| Homebrew Installs | 10 | 50 |
 | GitHub Issues | 5 | 20 |
-| skills.sh 安装 | 10 | 50 |
+| skills.sh Installs | 10 | 50 |

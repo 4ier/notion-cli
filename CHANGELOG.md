@@ -1,22 +1,22 @@
 # CHANGELOG
 
-모든 Git 커밋 이력을 최신순으로 기록합니다. 새 커밋은 표 최상단에 추가합니다.
+All Git commit history is recorded in reverse chronological order. New commits are added at the top of the table.
 
-| 일시 | 유형 | 범위 | 변경내용 (목적 포함) |
+| Date | Type | Scope | Change (with purpose) |
 |---|---|---|---|
-| 2026-06-05 14:19 | fix | util | `app.notion.com/p/...` 복사 URL에서 page ID 추출 지원 — `<page-id\|url>` 입력 호환성 개선 (#57) |
-| 2026-04-30 14:20 | feat | page | `page markdown` (GET /v1/pages/:id/markdown) + `page set-markdown` (PATCH, 4가지 모드 replace/append/after/range) 추가 — Notion 서버사이드 마크다운 I/O 일등공민화 (#37) |
-| 2026-04-30 14:20 | feat | page | `page property` 추가: GET /v1/pages/:id/properties/:id 자동 페이지네이션 — 25개 초과 relation/rollup/rich_text 사일런트 절단 수정 (#38) |
-| 2026-04-30 14:20 | feat | block | `block update --file <md>` / `--markdown` 지원 — append/insert와 일관된 마크다운 경험, 블록 타입 불일치 fail-fast (#36) |
-| 2026-04-30 14:20 | feat | comment | `comment update` (PATCH) + `comment delete` (DELETE) 추가 — 2025 API 신규 엔드포인트 래핑 (#33) |
-| 2026-04-30 14:20 | feat | page | `page archive` / `page trash`를 canonical로 승격, `page delete`는 별칭으로 유지 — soft-delete 의미 명확화 (#35) |
-| 2026-04-30 14:20 | feat | file | `file get <upload-id>` 추가: GET /v1/file_uploads/:id 래핑, 업로드 status/URL 확인 (#34) |
-| 2026-04-30 13:00 | feat | auth,client | `auth status`/`doctor`에 integration type 노출 + workspace-root 생성 에러에 concrete workaround 힌트 추가 (#25) |
-| 2026-04-30 13:00 | feat | file | `notion file upload`이 stdin(`-`)과 http(s) URL을 소스로 받도록 확장, `--name` 오버라이드 플래그 추가 (#26) |
-| 2026-04-30 13:00 | feat | block | `--image-file`/`--image-upload` 및 file/video/audio/pdf 5종 미디어 플래그 패밀리 추가 — 업로드-임베드 워크플로우 원-커맨드화 (#23) |
-| 2026-04-30 13:00 | feat | block | children.length>100 자동 배칭 + rich_text 2000자 한계 초과 시 코드블록 줄바꿈 기준 자동 분할, `--on-oversize=split\|truncate\|fail` 플래그 추가 (#21) |
-| 2026-04-30 13:00 | feat | block | 마크다운 코드펜스 언어 별칭(ts/sh/yml/py/…) Notion enum으로 자동 정규화, 미등록 언어는 plain text로 경고와 함께 폴백 (#22) |
-| 2026-04-30 13:00 | fix | api | `/v1` 접두사 자동 보정, `--body @file`·`--body -` 지원, help 예제 실제 동작과 일치하도록 정리 (#24) |
-| 2026-03-14 21:00 | chore | gitignore | notion.exe 바이너리 gitignore 추가 — Windows 빌드 결과물 추적 방지 |
-| 2026-03-14 20:10 | fix | block | table_row children을 table{} 내부로 이동 — Notion API 스펙 준수 ('table.children should be defined' 오류 수정) |
-| 2026-03-14 19:52 | feat | block | GFM 테이블 파싱 + 인라인 서식(bold/italic/code/link/strike) 지원 추가 — 노션 CLI로 마크다운 표 업로드 시 깨지던 문제 근본 해결 |
+| 2026-06-05 14:19 | fix | util | Support extracting page ID from `app.notion.com/p/...` copied URLs — improved `<page-id\|url>` input compatibility (#57) |
+| 2026-04-30 14:20 | feat | page | Add `page markdown` (GET /v1/pages/:id/markdown) + `page set-markdown` (PATCH, 4 modes: replace/append/after/range) — Notion server-side markdown I/O as first-class citizen (#37) |
+| 2026-04-30 14:20 | feat | page | Add `page property`: GET /v1/pages/:id/properties/:id with auto-pagination — fix silent truncation for relation/rollup/rich_text exceeding 25 items (#38) |
+| 2026-04-30 14:20 | feat | block | Add `block update --file <md>` / `--markdown` support — consistent markdown experience with append/insert, fail-fast on block type mismatch (#36) |
+| 2026-04-30 14:20 | feat | comment | Add `comment update` (PATCH) + `comment delete` (DELETE) — wrap 2025 API new endpoints (#33) |
+| 2026-04-30 14:20 | feat | page | Promote `page archive` / `page trash` as canonical, keep `page delete` as alias — clarify soft-delete semantics (#35) |
+| 2026-04-30 14:20 | feat | file | Add `file get <upload-id>`: wrap GET /v1/file_uploads/:id, check upload status/URL (#34) |
+| 2026-04-30 13:00 | feat | auth,client | Expose integration type in `auth status`/`doctor` + add concrete workaround hint for workspace-root creation error (#25) |
+| 2026-04-30 13:00 | feat | file | Extend `notion file upload` to accept stdin(`-`) and http(s) URL sources, add `--name` override flag (#26) |
+| 2026-04-30 13:00 | feat | block | Add `--image-file`/`--image-upload` and file/video/audio/pdf media flag family — one-command upload-embed workflow (#23) |
+| 2026-04-30 13:00 | feat | block | Auto-batch children.length>100 + auto-split rich_text exceeding 2000 chars at newline boundaries in code blocks, add `--on-oversize=split\|truncate\|fail` flag (#21) |
+| 2026-04-30 13:00 | feat | block | Auto-normalize markdown code fence language aliases (ts/sh/yml/py/…) to Notion enums, warn and fallback to plain text for unrecognized (#22) |
+| 2026-04-30 13:00 | fix | api | Auto-correct `/v1` prefix, support `--body @file` / `--body -`, align help examples with actual behavior (#24) |
+| 2026-03-14 21:00 | chore | gitignore | Add notion.exe binary to gitignore — prevent tracking Windows build artifacts |
+| 2026-03-14 20:10 | fix | block | Move table_row children into table{} — comply with Notion API spec (fix 'table.children should be defined' error) |
+| 2026-03-14 19:52 | feat | block | Add GFM table parsing + inline formatting (bold/italic/code/link/strike) support — fix broken markdown table uploads to Notion CLI |
