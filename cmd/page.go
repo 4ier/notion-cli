@@ -372,10 +372,6 @@ Examples:
 	},
 }
 
-// pageDeleteCmd is kept as a standalone var pointing at the same RunE
-// purely so existing tests / scripts that reference the variable name
-// still compile. The user-facing command is aliased via pageArchiveCmd.
-var pageDeleteCmd = pageArchiveCmd
 
 var pageMoveCmd = &cobra.Command{
 	Use:   "move <page-id|url>",
