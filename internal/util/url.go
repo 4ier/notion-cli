@@ -8,7 +8,8 @@ import (
 var (
 	// Match Notion URLs like https://www.notion.so/page-title-abc123def456
 	// or https://www.notion.so/workspace/abc123def456?v=...
-	notionURLRe = regexp.MustCompile(`(?:notion\.so|notion\.site)/(?:.*?)([a-f0-9]{32}|[a-f0-9-]{36})`)
+	// or https://app.notion.com/p/page-title-abc123def456?source=copy_link
+	notionURLRe = regexp.MustCompile(`(?:notion\.so|notion\.site|app\.notion\.com)/(?:.*?)([a-f0-9]{32}|[a-f0-9-]{36})`)
 	uuidRe      = regexp.MustCompile(`^[a-f0-9]{8}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{12}$`)
 	plainIDRe   = regexp.MustCompile(`^[a-f0-9]{32}$`)
 )
@@ -19,7 +20,7 @@ func ResolveID(input string) string {
 	input = strings.TrimSpace(input)
 
 	// Full URL
-	if strings.Contains(input, "notion.so") || strings.Contains(input, "notion.site") {
+	if strings.Contains(input, "notion.so") || strings.Contains(input, "notion.site") || strings.Contains(input, "app.notion.com") {
 		matches := notionURLRe.FindStringSubmatch(input)
 		if len(matches) > 1 {
 			return formatUUID(matches[1])
